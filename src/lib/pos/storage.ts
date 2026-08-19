@@ -76,10 +76,32 @@ export function getDefaultState(): PosPersistedState {
   };
 }
 
+// Persistence backend: SQLite (via the Electron `window.pos` bridge) when
+// running as the desktop app, else localStorage (browser dev). Existing
+// localStorage data is picked up once and migrated to SQLite on the next save.
+function readRawState(): string | null {
+  if (typeof window === "undefined") return null;
+  if (window.pos?.loadStateSync) {
+    const fromDb = window.pos.loadStateSync();
+    if (fromDb) return fromDb;
+    return localStorage.getItem(POS_STATE_KEY); // one-time migration source
+  }
+  return localStorage.getItem(POS_STATE_KEY);
+}
+
+function writeRawState(raw: string): void {
+  if (typeof window === "undefined") return;
+  if (window.pos?.saveState) {
+    void window.pos.saveState(raw);
+    return;
+  }
+  localStorage.setItem(POS_STATE_KEY, raw);
+}
+
 export function loadPosState(): PosPersistedState {
   if (typeof window === "undefined") return getDefaultState();
   try {
-    const raw = localStorage.getItem(POS_STATE_KEY);
+    const raw = readRawState();
     if (!raw) return getDefaultState();
     const parsed = JSON.parse(raw) as PosPersistedState;
     return {
@@ -94,7 +116,7 @@ export function loadPosState(): PosPersistedState {
 
 export function savePosState(state: PosPersistedState): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(POS_STATE_KEY, JSON.stringify(state));
+  writeRawState(JSON.stringify(state));
 }
 
 export function nextFolio(state: PosPersistedState): string {

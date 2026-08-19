@@ -1,5 +1,5 @@
 // Types for the preload bridge exposed as `window.pos`.
-// Grows as we add the local database, ticket printer and barcode APIs.
+// Present only when running inside Electron (undefined in the browser dev server).
 export {};
 
 declare global {
@@ -8,6 +8,10 @@ declare global {
       platform: NodeJS.Platform;
       isElectron: boolean;
       ping: () => Promise<string>;
+      // Local SQLite persistence.
+      loadStateSync: () => string | null;
+      saveState: (dataJson: string) => Promise<boolean>;
+      dbPath: () => Promise<string>;
     };
   }
 }

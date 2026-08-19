@@ -13,7 +13,8 @@
     "build": "vite build",
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
-    "dist": "npm run build && electron-builder"
+    "dist": "npm run build && electron-builder",
+    "postinstall": "electron-builder install-app-deps"
   },
   "build": {
     "appId": "com.northbike.pos",
@@ -21,6 +22,9 @@
     "files": [
       "dist/**/*",
       "electron/**/*"
+    ],
+    "asarUnpack": [
+      "**/node_modules/better-sqlite3/**"
     ],
     "directories": {
       "output": "C:/Users/ramos/AppData/Local/nb-pos-release"
@@ -37,6 +41,7 @@
     }
   },
   "dependencies": {
+    "better-sqlite3": "^13.0.3",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -44,6 +49,7 @@
     "recharts": "^3.10.1"
   },
   "devDependencies": {
+    "@electron/rebuild": "^4.2.0",
     "@tailwindcss/vite": "^4.3.3",
     "@types/node": "^22.20.1",
     "@types/react": "^19.2.18",
