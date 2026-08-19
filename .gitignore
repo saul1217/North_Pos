@@ -1,0 +1,36 @@
+# Dependencias (se reinstalan con npm install — NUNCA se commitean)
+node_modules/
+
+# Build del renderer (Vite) y de Electron
+dist/
+dist-electron/
+out/
+
+# Instaladores de electron-builder (por si algún build sale a ./release)
+release/
+
+# Variables de entorno / secretos
+.env
+.env.*
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Caches / temporales
+.vite/
+.cache/
+*.tsbuildinfo
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Editores
+.vscode/*
+!.vscode/extensions.json
+.idea/

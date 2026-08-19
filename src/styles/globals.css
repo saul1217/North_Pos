@@ -1,0 +1,88 @@
+@import "tailwindcss";
+
+:root {
+  --north-primary: #1f4d5f;
+  --north-primary-hover: #163a48;
+  --north-dark: #081319;
+  --north-dark-blue: #133948;
+  --north-steel: #6e8e9c;
+  --north-steel-muted: #9bb7c3;
+  --north-background: #fbfcfd;
+  --north-surface: #ffffff;
+  --north-border: #e2e9ed;
+  --north-muted: #5a6f7a;
+  --white: #ffffff;
+  --font-source-sans: "Source Sans 3", system-ui, sans-serif;
+  --font-barlow-condensed: "Barlow Condensed", system-ui, sans-serif;
+}
+
+@theme inline {
+  --color-north-primary: var(--north-primary);
+  --color-north-primary-hover: var(--north-primary-hover);
+  --color-north-dark: var(--north-dark);
+  --color-north-dark-blue: var(--north-dark-blue);
+  --color-north-steel: var(--north-steel);
+  --color-north-steel-muted: var(--north-steel-muted);
+  --color-north-background: var(--north-background);
+  --color-north-surface: var(--north-surface);
+  --color-north-border: var(--north-border);
+  --color-north-muted: var(--north-muted);
+  --color-white: var(--white);
+  --font-sans: var(--font-source-sans);
+  --font-display: var(--font-barlow-condensed);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background: var(--north-background);
+  color: var(--north-dark);
+  font-family: var(--font-source-sans), system-ui, sans-serif;
+}
+
+::selection {
+  background: color-mix(in srgb, var(--north-primary) 28%, white);
+  color: var(--north-dark);
+}
+
+/* Subtle grit for dark bands — outdoor / mechanical feel */
+.surface-dark-texture {
+  background-image:
+    linear-gradient(
+      180deg,
+      color-mix(in srgb, var(--north-dark) 92%, transparent),
+      var(--north-dark)
+    ),
+    repeating-linear-gradient(
+      -12deg,
+      transparent,
+      transparent 11px,
+      color-mix(in srgb, white 2.5%, transparent) 11px,
+      color-mix(in srgb, white 2.5%, transparent) 12px
+    );
+}
+
+.container-page {
+  width: 100%;
+  max-width: 80rem;
+  margin-inline: auto;
+  padding-inline: 1rem;
+}
+
+@media (min-width: 768px) {
+  .container-page {
+    padding-inline: 1.5rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .container-page {
+    padding-inline: 2rem;
+  }
+}
