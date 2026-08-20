@@ -5,6 +5,8 @@ import {
   useCallback,
   useContext,
   useMemo,
+  useEffect,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -44,6 +46,12 @@ import {
   nextWorkshopFolio,
   savePosState,
 } from "@/lib/pos/storage";
+import {
+  createProduct as createProductApi,
+  fetchProducts,
+  updateProduct as updateProductApi,
+  type ProductInput,
+} from "@/lib/catalog/api";
 
 type PosStore = PosPersistedState & {
   currentSale: CurrentSale;
@@ -164,6 +172,8 @@ function recordStockChange(
 
 type PosContextValue = {
   products: PosProduct[];
+  catalogLoading: boolean;
+  catalogError: string | null;
   currentSale: CurrentSale;
   sales: CompletedSale[];
   movements: InventoryMovement[];
@@ -235,16 +245,50 @@ type PosContextValue = {
   openTicket: () => void;
   closeTicket: () => void;
   newSale: () => void;
+  refreshCatalog: () => Promise<void>;
+  createProduct: (input: ProductInput) => Promise<PosProduct>;
+  updateProduct: (id: string, input: ProductInput) => Promise<PosProduct>;
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
 
 export function PosProvider({ children }: { children: ReactNode }) {
+  const [catalogLoading, setCatalogLoading] = useState(false);
+  const [catalogError, setCatalogError] = useState<string | null>(null);
   const snapshot = useSyncExternalStore(
     subscribe,
     getSnapshot,
     getServerSnapshot,
   );
+
+  const refreshCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    setCatalogError(null);
+    try {
+      const products = await fetchProducts();
+      persist({ products });
+    } catch (error) {
+      setCatalogError((error as Error).message);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") void refreshCatalog();
+  }, [refreshCatalog]);
+
+  const createProduct = useCallback(async (input: ProductInput) => {
+    const product = await createProductApi(input);
+    persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
+    return product;
+  }, []);
+
+  const updateProduct = useCallback(async (id: string, input: ProductInput) => {
+    const product = await updateProductApi(id, input);
+    persist({ products: store.products.map((item) => item.id === id ? product : item) });
+    return product;
+  }, []);
 
   const subtotal = useMemo(
     () => calcSaleSubtotal(snapshot.currentSale.items),
@@ -853,6 +897,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const value = useMemo<PosContextValue>(
     () => ({
       products: snapshot.products,
+      catalogLoading,
+      catalogError,
       currentSale: snapshot.currentSale,
       sales: snapshot.sales,
       movements: snapshot.movements,
@@ -893,6 +939,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
       openTicket,
       closeTicket,
       newSale,
+      refreshCatalog,
+      createProduct,
+      updateProduct,
     }),
     [
       snapshot,
@@ -925,6 +974,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
       openTicket,
       closeTicket,
       newSale,
+      refreshCatalog,
+      createProduct,
+      updateProduct,
+      catalogLoading,
+      catalogError,
     ],
   );
 
