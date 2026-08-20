@@ -1,4 +1,4 @@
-export type AuthUser = { id: string; username: string; role: "admin" | "cajero" };
+export type AuthUser = { id: string; username: string; role: "admin" | "cajero" | "taller"; mustChangePassword: boolean };
 export type AuthSession = { access_token: string; user: AuthUser };
 
 const AUTH_KEY = "northbike-pos-auth-v1";

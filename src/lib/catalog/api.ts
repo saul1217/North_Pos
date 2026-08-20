@@ -48,3 +48,21 @@ export function updateProduct(id: string, input: ProductInput): Promise<PosProdu
     body: JSON.stringify(input),
   });
 }
+
+export type ManagedUser = AuthSession["user"] & { active: boolean; createdAt: string; updatedAt: string };
+
+export function fetchUsers(): Promise<ManagedUser[]> {
+  return request<ManagedUser[]>("/api/users");
+}
+
+export function createUser(input: { username: string; temporaryPassword: string; role: AuthSession["user"]["role"] }): Promise<ManagedUser> {
+  return request<ManagedUser>("/api/users", { method: "POST", body: JSON.stringify(input) });
+}
+
+export function updateUser(id: string, input: { role?: AuthSession["user"]["role"]; active?: boolean; temporaryPassword?: string }): Promise<ManagedUser> {
+  return request<ManagedUser>(`/api/users/${id}`, { method: "PATCH", body: JSON.stringify(input) });
+}
+
+export function changePassword(currentPassword: string, newPassword: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/users/me/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
+}

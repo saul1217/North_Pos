@@ -14,7 +14,9 @@ import {
   ShoppingCart,
   Wrench,
   LogOut,
+  Users,
 } from "lucide-react";
+import type { AuthUser } from "@/lib/auth";
 
 const nav = [
   { href: "/pos/venta", label: "Venta", icon: ShoppingCart },
@@ -27,7 +29,7 @@ const nav = [
   { href: "/pos/analiticas", label: "Analíticas", icon: LineChart },
 ];
 
-export function PosSidebar({ onLogout, username }: { onLogout: () => void; username: string }) {
+export function PosSidebar({ onLogout, username, role }: { onLogout: () => void; username: string; role: AuthUser["role"] }) {
   const pathname = usePathname();
 
   return (
@@ -51,7 +53,7 @@ export function PosSidebar({ onLogout, username }: { onLogout: () => void; usern
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {nav.map(({ href, label, icon: Icon }) => {
+        {[...nav, ...(role === "admin" ? [{ href: "/pos/usuarios", label: "Usuarios", icon: Users }] : [])].map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link
@@ -73,7 +75,7 @@ export function PosSidebar({ onLogout, username }: { onLogout: () => void; usern
       <div className="border-t border-white/10 p-4 text-xs text-north-steel">
         <p>Sucursal Chihuahua</p>
         <p>Caja 01</p>
-        <p className="mt-2 text-white/80">Usuario: {username}</p>
+        <p className="mt-2 text-white/80">Usuario: {username} · {role}</p>
         <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-1.5 text-north-steel-muted hover:text-white">
           <LogOut className="h-3.5 w-3.5" />
           Cerrar sesión
