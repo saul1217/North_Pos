@@ -67,7 +67,7 @@ export function PosSidebar({ onLogout, username, role }: { onLogout: () => void;
               }`}
             >
               <Icon className="h-4 w-4 shrink-0" />
-              {label}
+              {href === "/pos/taller" && role === "cajero" ? "Órdenes taller" : label}
             </Link>
           );
         })}

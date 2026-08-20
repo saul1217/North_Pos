@@ -52,6 +52,8 @@ import {
   fetchWorkshopOrders,
   createWorkshopOrder as createWorkshopOrderApi,
   updateWorkshopOrder as updateWorkshopOrderApi,
+  updateWorkshopBudget as updateWorkshopBudgetApi,
+  payWorkshopOrder as payWorkshopOrderApi,
   updateProduct as updateProductApi,
   type ProductInput,
 } from "@/lib/catalog/api";
@@ -244,6 +246,8 @@ type PosContextValue = {
     id: string,
     patch: Partial<WorkshopOrder>,
   ) => void;
+  updateWorkshopBudget: (id: string, budget: NonNullable<WorkshopOrder["budget"]>) => Promise<WorkshopOrder>;
+  payWorkshopOrder: (id: string, method: string) => Promise<WorkshopOrder>;
   getProductMovements: (productId: string) => InventoryMovement[];
   closeSuccess: () => void;
   openTicket: () => void;
@@ -902,6 +906,18 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [],
   );
 
+  const updateWorkshopBudget = useCallback(async (id: string, budget: NonNullable<WorkshopOrder["budget"]>) => {
+    const updated = await updateWorkshopBudgetApi(id, budget);
+    persist({ workshopOrders: store.workshopOrders.map((order) => order.id === id ? updated : order) });
+    return updated;
+  }, []);
+
+  const payWorkshopOrder = useCallback(async (id: string, method: string) => {
+    const updated = await payWorkshopOrderApi(id, { saleId: crypto.randomUUID(), method });
+    persist({ workshopOrders: store.workshopOrders.map((order) => order.id === id ? updated : order) });
+    return updated;
+  }, []);
+
   const getProductMovements = useCallback(
     (productId: string) =>
       store.movements.filter((m) => m.productId === productId),
@@ -961,6 +977,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       loadQuotationToSale,
       createWorkshopOrder,
       updateWorkshopOrder,
+      updateWorkshopBudget,
+      payWorkshopOrder,
       getProductMovements,
       closeSuccess,
       openTicket,
@@ -996,6 +1014,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       loadQuotationToSale,
       createWorkshopOrder,
       updateWorkshopOrder,
+      updateWorkshopBudget,
+      payWorkshopOrder,
       getProductMovements,
       closeSuccess,
       openTicket,

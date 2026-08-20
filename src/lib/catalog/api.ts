@@ -71,6 +71,26 @@ export function updateWorkshopOrder(
   });
 }
 
+export function updateWorkshopBudget(
+  id: string,
+  budget: NonNullable<WorkshopOrder["budget"]>,
+): Promise<WorkshopOrder> {
+  return request<WorkshopOrder>(`/api/workshop-orders/${id}/budget`, {
+    method: "PATCH",
+    body: JSON.stringify({ budget }),
+  });
+}
+
+export function payWorkshopOrder(
+  id: string,
+  input: { saleId: string; method: string },
+): Promise<WorkshopOrder> {
+  return request<WorkshopOrder>(`/api/workshop-orders/${id}/pay`, {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export type ManagedUser = AuthSession["user"] & { active: boolean; createdAt: string; updatedAt: string };
 
 export function fetchUsers(): Promise<ManagedUser[]> {

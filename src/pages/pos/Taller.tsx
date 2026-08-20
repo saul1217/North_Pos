@@ -11,11 +11,14 @@ import type {
   WorkshopStatus,
 } from "@/lib/pos/types";
 import { WorkshopReceipt } from "@/components/pos/WorkshopReceipt";
+import { getAuthSession } from "@/lib/auth";
 
 const statusOptions: WorkshopStatus[] = [
   "recibida",
   "diagnostico",
+  "pendiente_cobro",
   "esperando_aprobacion",
+  "pagada",
   "en_proceso",
   "lista",
   "entregada",
@@ -28,7 +31,12 @@ export default function PosTallerPage() {
     checklistTemplate,
     createWorkshopOrder,
     updateWorkshopOrder,
+    updateWorkshopBudget,
+    payWorkshopOrder,
   } = usePos();
+
+  const role = getAuthSession()?.user.role;
+  const isCashier = role === "cajero";
 
   const [view, setView] = useState<"list" | "new">("list");
   const [selected, setSelected] = useState<WorkshopOrder | null>(null);
@@ -58,6 +66,7 @@ export default function PosTallerPage() {
   const [diagnosis, setDiagnosis] = useState("");
   const [technicalNotes, setTechnicalNotes] = useState("");
   const [budgetItems, setBudgetItems] = useState<WorkshopBudgetItem[]>([]);
+  const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "transferencia">("efectivo");
 
   function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -149,21 +158,33 @@ export default function PosTallerPage() {
     setSelected({ ...selected, diagnosis, technicalNotes, status: "diagnostico" });
   }
 
-  function saveBudget() {
+  async function saveBudget() {
     if (!selected) return;
     const subtotal = budgetItems.reduce(
       (s, i) => s + i.price * i.quantity,
       0,
     );
-    updateWorkshopOrder(selected.id, {
-      budget: {
+    try {
+      const updated = await updateWorkshopBudget(selected.id, {
         items: budgetItems,
         subtotal,
         total: subtotal,
         status: "pendiente",
-      },
-      status: "esperando_aprobacion",
-    });
+      });
+      setSelected(updated);
+    } catch (error) {
+      setFormError((error as Error).message);
+    }
+  }
+
+  async function payOrder() {
+    if (!selected || !selected.budget || selected.paymentStatus === "pagada") return;
+    try {
+      const updated = await payWorkshopOrder(selected.id, paymentMethod);
+      setSelected(updated);
+    } catch (error) {
+      setFormError((error as Error).message);
+    }
   }
 
   function addBudgetLine() {
@@ -186,26 +207,28 @@ export default function PosTallerPage() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">
-                Taller
+                {isCashier ? "Órdenes de taller" : "Taller"}
               </h1>
               <p className="mt-1 text-sm text-north-muted">
                 Recepción, diagnóstico y órdenes de servicio
               </p>
             </div>
-            <button
-              type="button"
-              onClick={() => setView(view === "list" ? "new" : "list")}
-              className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
-            >
-              {view === "list" ? (
-                <>
-                  <Plus className="h-4 w-4" />
-                  Nueva recepción
-                </>
-              ) : (
-                "Ver órdenes"
-              )}
-            </button>
+            {!isCashier && (
+              <button
+                type="button"
+                onClick={() => setView(view === "list" ? "new" : "list")}
+                className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
+              >
+                {view === "list" ? (
+                  <>
+                    <Plus className="h-4 w-4" />
+                    Nueva recepción
+                  </>
+                ) : (
+                  "Ver órdenes"
+                )}
+              </button>
+            )}
           </div>
         </header>
 
@@ -278,7 +301,7 @@ export default function PosTallerPage() {
                   </div>
                 )}
 
-                <div className="mt-4 space-y-2">
+                {!isCashier && <div className="mt-4 space-y-2">
                   <label className="text-xs font-semibold uppercase text-north-steel">
                     Diagnóstico
                   </label>
@@ -300,7 +323,7 @@ export default function PosTallerPage() {
                   >
                     Guardar diagnóstico
                   </button>
-                </div>
+                </div>}
 
                 <div className="mt-4">
                   <div className="mb-2 flex items-center justify-between">
@@ -348,14 +371,37 @@ export default function PosTallerPage() {
                   ))}
                   <button
                     type="button"
-                    onClick={saveBudget}
+                    onClick={() => void saveBudget()}
                     className="h-9 w-full bg-north-primary text-sm text-white"
                   >
-                    Generar presupuesto
+                    {isCashier ? "Guardar presupuesto y enviar a cobro" : "Enviar presupuesto a caja"}
                   </button>
                 </div>
 
-                <select
+                {isCashier && selected.budget && selected.status === "pendiente_cobro" && (
+                  <div className="mt-4 border border-amber-200 bg-amber-50 p-3">
+                    <p className="text-xs font-semibold uppercase text-amber-800">Cobro en caja</p>
+                    <p className="mt-1 text-sm text-amber-900">Total: {formatPosPrice(selected.budget.total)}</p>
+                    <select
+                      value={paymentMethod}
+                      onChange={(e) => setPaymentMethod(e.target.value as typeof paymentMethod)}
+                      className="mt-3 h-10 w-full border border-north-border bg-white px-2 text-sm"
+                    >
+                      <option value="efectivo">Efectivo</option>
+                      <option value="tarjeta">Tarjeta</option>
+                      <option value="transferencia">Transferencia</option>
+                    </select>
+                    <button
+                      type="button"
+                      onClick={() => void payOrder()}
+                      className="mt-3 h-10 w-full bg-north-primary text-sm font-semibold text-white"
+                    >
+                      Confirmar pago
+                    </button>
+                  </div>
+                )}
+
+                {!isCashier && <select
                   value={selected.status}
                   onChange={(e) =>
                     updateWorkshopOrder(selected.id, {
@@ -369,7 +415,7 @@ export default function PosTallerPage() {
                       {s}
                     </option>
                   ))}
-                </select>
+                </select>}
 
                 <button
                   type="button"

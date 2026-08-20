@@ -2,7 +2,7 @@ import type { AuthUser } from "@/lib/auth";
 
 const rolePaths: Record<AuthUser["role"], string[]> = {
   admin: ["/pos/"],
-  cajero: ["/pos/venta", "/pos/productos", "/pos/ventas", "/pos/apartados", "/pos/cotizaciones"],
+  cajero: ["/pos/venta", "/pos/productos", "/pos/ventas", "/pos/apartados", "/pos/cotizaciones", "/pos/taller"],
   taller: ["/pos/taller", "/pos/productos", "/pos/inventario"],
 };
 

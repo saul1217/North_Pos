@@ -216,7 +216,9 @@ export type WorkshopBudget = {
 export type WorkshopStatus =
   | "recibida"
   | "diagnostico"
+  | "pendiente_cobro"
   | "esperando_aprobacion"
+  | "pagada"
   | "en_proceso"
   | "lista"
   | "entregada"
@@ -240,6 +242,10 @@ export type WorkshopOrder = {
   diagnosis?: string;
   technicalNotes?: string;
   budget?: WorkshopBudget;
+  paymentStatus?: "pendiente" | "pagada";
+  paidAt?: string;
+  paidBy?: string;
+  saleId?: string;
   status: WorkshopStatus;
   receivedAt: string;
   assignedTo: string;
