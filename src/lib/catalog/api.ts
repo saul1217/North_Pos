@@ -1,5 +1,6 @@
 import { API_BASE } from "@/lib/sync/sync";
 import type { PosProduct, ProductVariant } from "@/lib/pos/types";
+import { getAccessToken, type AuthSession } from "@/lib/auth";
 
 export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
   stock?: number;
@@ -7,15 +8,27 @@ export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getAccessToken();
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
   });
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(detail || `HTTP ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+export function login(username: string, password: string): Promise<AuthSession> {
+  return request<AuthSession>("/api/auth/login", {
+    method: "POST",
+    body: JSON.stringify({ username, password }),
+  });
 }
 
 export function fetchProducts(): Promise<PosProduct[]> {

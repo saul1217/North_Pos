@@ -22,7 +22,9 @@ ipcMain.handle("pos:saveState", (_event, dataJson) => {
 ipcMain.handle("pos:dbPath", () => db.dbPath());
 
 // Dev: load the Vite dev server. Packaged: load the built renderer over file://
-const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://localhost:5180";
+// Match Vite's explicit IPv4 bind. On Windows, `localhost` may resolve to
+// IPv6 first while Vite is listening only on 127.0.0.1, leaving Electron blank.
+const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5180";
 const isDev = !app.isPackaged;
 
 function createWindow() {

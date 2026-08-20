@@ -13,6 +13,7 @@ import {
   Receipt,
   ShoppingCart,
   Wrench,
+  LogOut,
 } from "lucide-react";
 
 const nav = [
@@ -26,7 +27,7 @@ const nav = [
   { href: "/pos/analiticas", label: "Analíticas", icon: LineChart },
 ];
 
-export function PosSidebar() {
+export function PosSidebar({ onLogout, username }: { onLogout: () => void; username: string }) {
   const pathname = usePathname();
 
   return (
@@ -72,7 +73,11 @@ export function PosSidebar() {
       <div className="border-t border-white/10 p-4 text-xs text-north-steel">
         <p>Sucursal Chihuahua</p>
         <p>Caja 01</p>
-        <p className="mt-2 text-white/80">Usuario: Admin demo</p>
+        <p className="mt-2 text-white/80">Usuario: {username}</p>
+        <button type="button" onClick={onLogout} className="mt-3 inline-flex items-center gap-1.5 text-north-steel-muted hover:text-white">
+          <LogOut className="h-3.5 w-3.5" />
+          Cerrar sesión
+        </button>
         <Link
           href="/"
           className="mt-4 inline-flex items-center gap-1.5 text-north-steel-muted hover:text-white"

@@ -1,5 +1,6 @@
 import type { CompletedSale } from "@/lib/pos/types";
 import { addSyncedIds, getSyncedIds } from "./kv";
+import { getAccessToken } from "@/lib/auth";
 
 // Backend base URL. Baked at build time; defaults to the local backend for dev.
 // For the packaged app build with: VITE_API_URL=https://<tu-app>.up.railway.app
@@ -52,7 +53,10 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
   try {
     const res = await fetch(`${API_BASE}/api/sales/sync`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+      },
       body: JSON.stringify({ sales: pending.map(toPayload) }),
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);

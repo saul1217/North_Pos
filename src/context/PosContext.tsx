@@ -52,6 +52,7 @@ import {
   updateProduct as updateProductApi,
   type ProductInput,
 } from "@/lib/catalog/api";
+import { getAccessToken } from "@/lib/auth";
 
 type PosStore = PosPersistedState & {
   currentSale: CurrentSale;
@@ -262,6 +263,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
   );
 
   const refreshCatalog = useCallback(async () => {
+    if (!getAccessToken()) return;
     setCatalogLoading(true);
     setCatalogError(null);
     try {
