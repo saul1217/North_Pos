@@ -14,16 +14,18 @@ import { WorkshopReceipt } from "@/components/pos/WorkshopReceipt";
 import { getAuthSession } from "@/lib/auth";
 
 const statusOptions: WorkshopStatus[] = [
-  "recibida",
-  "diagnostico",
-  "pendiente_cobro",
-  "esperando_aprobacion",
-  "pagada",
-  "en_proceso",
-  "lista",
+  "diagnosticada",
+  "terminada",
   "entregada",
-  "cancelada",
 ];
+
+const statusLabels: Record<WorkshopStatus, string> = {
+  recibida: "Pendiente de diagnóstico",
+  diagnosticada: "Diagnosticada",
+  terminada: "Terminada",
+  entregada: "Entregada",
+  cancelada: "Cancelada",
+};
 
 export default function PosTallerPage() {
   const {
@@ -153,9 +155,8 @@ export default function PosTallerPage() {
       diagnosis,
       technicalNotes,
       clientProblem: selected.clientProblem,
-      status: "diagnostico",
     });
-    setSelected({ ...selected, diagnosis, technicalNotes, status: "diagnostico" });
+    setSelected({ ...selected, diagnosis, technicalNotes });
   }
 
   async function saveBudget() {
@@ -268,7 +269,7 @@ export default function PosTallerPage() {
                       <td className="px-4 py-3 text-xs text-north-muted">
                         {new Date(o.receivedAt).toLocaleDateString("es-MX")}
                       </td>
-                      <td className="px-4 py-3 capitalize">{o.status}</td>
+                      <td className="px-4 py-3">{statusLabels[o.status] ?? o.status}</td>
                       <td className="px-4 py-3">
                         {o.budget
                           ? formatPosPrice(o.budget.total)
@@ -284,7 +285,8 @@ export default function PosTallerPage() {
               <aside className="w-full border-t border-north-border bg-white p-5 lg:w-96 lg:border-l lg:border-t-0">
                 <h2 className="font-display text-lg font-bold">{selected.folio}</h2>
                 <p className="text-sm capitalize text-north-muted">
-                  {selected.status} · {selected.assignedTo}
+                  {statusLabels[selected.status] ?? selected.status} · {selected.assignedTo}
+                  {selected.paymentStatus === "pagada" && " · Pago confirmado"}
                 </p>
 
                 {selected.photos.length > 0 && (
@@ -374,11 +376,11 @@ export default function PosTallerPage() {
                     onClick={() => void saveBudget()}
                     className="h-9 w-full bg-north-primary text-sm text-white"
                   >
-                    {isCashier ? "Guardar presupuesto y enviar a cobro" : "Enviar presupuesto a caja"}
+                    {isCashier ? "Guardar presupuesto" : "Guardar diagnóstico y enviar a caja"}
                   </button>
                 </div>
 
-                {isCashier && selected.budget && selected.status === "pendiente_cobro" && (
+                {isCashier && selected.budget && (selected.status === "diagnosticada" || selected.status === "terminada") && selected.paymentStatus !== "pagada" && (
                   <div className="mt-4 border border-amber-200 bg-amber-50 p-3">
                     <p className="text-xs font-semibold uppercase text-amber-800">Cobro en caja</p>
                     <p className="mt-1 text-sm text-amber-900">Total: {formatPosPrice(selected.budget.total)}</p>
@@ -401,7 +403,7 @@ export default function PosTallerPage() {
                   </div>
                 )}
 
-                {!isCashier && <select
+                {!isCashier && selected.status !== "recibida" && <select
                   value={selected.status}
                   onChange={(e) =>
                     updateWorkshopOrder(selected.id, {
@@ -412,7 +414,7 @@ export default function PosTallerPage() {
                 >
                   {statusOptions.map((s) => (
                     <option key={s} value={s}>
-                      {s}
+                      {statusLabels[s]}
                     </option>
                   ))}
                 </select>}

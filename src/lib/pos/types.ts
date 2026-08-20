@@ -215,12 +215,8 @@ export type WorkshopBudget = {
 
 export type WorkshopStatus =
   | "recibida"
-  | "diagnostico"
-  | "pendiente_cobro"
-  | "esperando_aprobacion"
-  | "pagada"
-  | "en_proceso"
-  | "lista"
+  | "diagnosticada"
+  | "terminada"
   | "entregada"
   | "cancelada";
 
