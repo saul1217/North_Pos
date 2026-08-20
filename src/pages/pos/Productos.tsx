@@ -1,12 +1,13 @@
 "use client";
 
 import Image from "next/image";
-import { Eye, Pencil, Plus, RefreshCw, Search, X } from "lucide-react";
+import { Eye, Pencil, Plus, RefreshCw, Search, Upload, X } from "lucide-react";
 import { Fragment, useMemo, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput } from "@/lib/catalog/api";
+import { uploadProductImage } from "@/lib/catalog/api";
 
 type ProductForm = {
   sku: string;
@@ -72,6 +73,7 @@ export default function PosProductosPage() {
   const [formOpen, setFormOpen] = useState(false);
   const [editing, setEditing] = useState<PosProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
+  const [imageFile, setImageFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -90,6 +92,7 @@ export default function PosProductosPage() {
   function openCreate() {
     setEditing(null);
     setForm(emptyForm);
+    setImageFile(null);
     setFormError(null);
     setFormOpen(true);
   }
@@ -97,6 +100,7 @@ export default function PosProductosPage() {
   function openEdit(product: PosProduct) {
     setEditing(product);
     setForm(formFromProduct(product));
+    setImageFile(null);
     setFormError(null);
     setFormOpen(true);
   }
@@ -121,7 +125,14 @@ export default function PosProductosPage() {
       setFormError("Captura nombre, SKU y un precio válido.");
       return;
     }
-    const input: ProductInput = {
+    setSaving(true);
+    setFormError(null);
+    try {
+      let imageUrl = form.image.trim();
+      if (imageFile) {
+        imageUrl = (await uploadProductImage(imageFile)).url;
+      }
+      const input: ProductInput = {
       sku: form.sku.trim(),
       name: form.name.trim(),
       category: form.category,
@@ -130,16 +141,13 @@ export default function PosProductosPage() {
       minStock: Number(form.minStock) || 0,
       barcode: form.barcode.trim(),
       location: form.location.trim(),
-      image: form.image.trim(),
+      image: imageUrl,
       status: form.status,
       hasVariants: form.variants.length > 0,
       requiresSerial: form.requiresSerial,
       variants: form.variants.filter((variant) => variant.sku.trim() && variant.label.trim()).map((variant) => ({ ...variant, price: Number(variant.price) || 0, stock: Number(variant.stock) || 0, minStock: Number(variant.minStock) || 0 })),
       serialUnits: form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
-    };
-    setSaving(true);
-    setFormError(null);
-    try {
+      };
       if (editing) await updateProduct(editing.id, input);
       else await createProduct(input);
       setFormOpen(false);
@@ -362,7 +370,17 @@ export default function PosProductosPage() {
               <label className="text-sm font-medium">Ubicación<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Estado<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProductForm["status"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></label>
               <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={form.requiresSerial} onChange={(e) => setForm({ ...form, requiresSerial: e.target.checked })} /> Requiere número de serie</label>
-              <label className="text-sm font-medium md:col-span-2">URL de imagen (opcional)<input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
+              <div className="md:col-span-2">
+                <label className="text-sm font-medium">Imagen del producto
+                  <span className="mt-1 flex h-10 items-center gap-2 border border-north-border px-3 font-normal">
+                    <Upload className="h-4 w-4 text-north-muted" />
+                    <input type="file" accept="image/jpeg,image/png,image/webp" onChange={(e) => setImageFile(e.target.files?.[0] ?? null)} className="min-w-0 flex-1 text-xs" />
+                  </span>
+                </label>
+                <p className="mt-1 text-xs text-north-muted">JPG, PNG o WebP. Máximo 5 MB.</p>
+                <label className="mt-3 block text-sm font-medium">URL existente (opcional)<input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
+                {imageFile && <p className="mt-1 text-xs text-north-primary">Seleccionada: {imageFile.name}</p>}
+              </div>
             </div>
             <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Variantes</h3><p className="text-xs text-north-muted">Talla, rueda, color o modelo con stock propio.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar variante</button></div>

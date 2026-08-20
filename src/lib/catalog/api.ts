@@ -10,10 +10,11 @@ export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();
+  const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
     headers: {
-      "Content-Type": "application/json",
+      ...(isFormData ? {} : { "Content-Type": "application/json" }),
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
       ...(init?.headers ?? {}),
     },
@@ -23,6 +24,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     throw new Error(detail || `HTTP ${response.status}`);
   }
   return (await response.json()) as T;
+}
+
+export function uploadProductImage(file: File): Promise<{ bucket: string; path: string; url: string }> {
+  const body = new FormData();
+  body.append("file", file);
+  return request<{ bucket: string; path: string; url: string }>("/api/uploads/product-image", {
+    method: "POST",
+    body,
+  });
 }
 
 export function login(username: string, password: string): Promise<AuthSession> {
