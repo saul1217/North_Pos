@@ -49,6 +49,7 @@ export type PosProduct = {
   stock: number;
   minStock: number;
   image: string;
+  images?: string[];
   barcode: string;
   status: PosProductStatus;
   location: string;

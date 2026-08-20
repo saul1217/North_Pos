@@ -19,6 +19,7 @@ type ProductForm = {
   barcode: string;
   location: string;
   image: string;
+  images: string[];
   status: PosProduct["status"];
   requiresSerial: boolean;
   variants: ProductVariant[];
@@ -35,6 +36,7 @@ const emptyForm: ProductForm = {
   barcode: "",
   location: "",
   image: "",
+  images: [],
   status: "activo",
   requiresSerial: false,
   variants: [],
@@ -52,6 +54,7 @@ function formFromProduct(product: PosProduct): ProductForm {
     barcode: product.barcode,
     location: product.location,
     image: product.image,
+    images: product.images ?? [],
     status: product.status,
     requiresSerial: product.requiresSerial,
     variants: product.variants,
@@ -74,6 +77,7 @@ export default function PosProductosPage() {
   const [editing, setEditing] = useState<PosProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [imageFile, setImageFile] = useState<File | null>(null);
+  const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
 
@@ -93,6 +97,7 @@ export default function PosProductosPage() {
     setEditing(null);
     setForm(emptyForm);
     setImageFile(null);
+    setImageFiles([]);
     setFormError(null);
     setFormOpen(true);
   }
@@ -101,6 +106,7 @@ export default function PosProductosPage() {
     setEditing(product);
     setForm(formFromProduct(product));
     setImageFile(null);
+    setImageFiles([]);
     setFormError(null);
     setFormOpen(true);
   }
@@ -132,6 +138,9 @@ export default function PosProductosPage() {
       if (imageFile) {
         imageUrl = (await uploadProductImage(imageFile)).url;
       }
+      const uploadedGallery = imageFiles.length > 0
+        ? await Promise.all(imageFiles.map((file) => uploadProductImage(file)))
+        : [];
       const input: ProductInput = {
       sku: form.sku.trim(),
       name: form.name.trim(),
@@ -142,6 +151,7 @@ export default function PosProductosPage() {
       barcode: form.barcode.trim(),
       location: form.location.trim(),
       image: imageUrl,
+      images: [...form.images, ...uploadedGallery.map((image) => image.url)],
       status: form.status,
       hasVariants: form.variants.length > 0,
       requiresSerial: form.requiresSerial,
@@ -380,6 +390,11 @@ export default function PosProductosPage() {
                 <p className="mt-1 text-xs text-north-muted">JPG, PNG o WebP. Máximo 5 MB.</p>
                 <label className="mt-3 block text-sm font-medium">URL existente (opcional)<input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
                 {imageFile && <p className="mt-1 text-xs text-north-primary">Seleccionada: {imageFile.name}</p>}
+                <label className="mt-3 block text-sm font-medium">Imágenes adicionales
+                  <input type="file" multiple accept="image/jpeg,image/png,image/webp" onChange={(e) => setImageFiles(Array.from(e.target.files ?? []))} className="mt-1 block w-full text-xs" />
+                </label>
+                {imageFiles.length > 0 && <p className="mt-1 text-xs text-north-primary">{imageFiles.length} imágenes nuevas seleccionadas</p>}
+                {form.images.length > 0 && <div className="mt-3 flex gap-2 overflow-x-auto">{form.images.map((url, index) => <div key={`${url}-${index}`} className="relative shrink-0"><img src={url} alt={`Imagen ${index + 2}`} className="h-14 w-14 object-cover" /><button type="button" onClick={() => setForm({ ...form, images: form.images.filter((_, i) => i !== index) })} className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-red-700 text-xs text-white" aria-label={`Eliminar imagen ${index + 2}`}>×</button></div>)}</div>}
               </div>
             </div>
             <section className="border-t border-north-border px-5 py-4">
