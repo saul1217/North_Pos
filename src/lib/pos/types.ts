@@ -35,7 +35,7 @@ export type ProductVariant = {
 export type SerialUnit = {
   id: string;
   serialNumber: string;
-  variantId: string;
+  variantId?: string;
   status: "disponible" | "vendido" | "apartado";
   location: string;
 };

@@ -5,6 +5,7 @@ import { getAccessToken, type AuthSession } from "@/lib/auth";
 export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
   stock?: number;
   variants?: Array<Omit<ProductVariant, "id"> & { id?: string }>;
+  serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id"> & { id?: string }>;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

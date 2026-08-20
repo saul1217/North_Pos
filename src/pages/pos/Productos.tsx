@@ -5,7 +5,7 @@ import { Eye, Pencil, Plus, RefreshCw, Search, X } from "lucide-react";
 import { Fragment, useMemo, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice } from "@/lib/pos/inventory";
-import type { PosProduct } from "@/lib/pos/types";
+import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput } from "@/lib/catalog/api";
 
 type ProductForm = {
@@ -20,6 +20,8 @@ type ProductForm = {
   image: string;
   status: PosProduct["status"];
   requiresSerial: boolean;
+  variants: ProductVariant[];
+  serialUnits: SerialUnit[];
 };
 
 const emptyForm: ProductForm = {
@@ -34,6 +36,8 @@ const emptyForm: ProductForm = {
   image: "",
   status: "activo",
   requiresSerial: false,
+  variants: [],
+  serialUnits: [],
 };
 
 function formFromProduct(product: PosProduct): ProductForm {
@@ -49,6 +53,8 @@ function formFromProduct(product: PosProduct): ProductForm {
     image: product.image,
     status: product.status,
     requiresSerial: product.requiresSerial,
+    variants: product.variants,
+    serialUnits: product.serialUnits,
   };
 }
 
@@ -95,6 +101,20 @@ export default function PosProductosPage() {
     setFormOpen(true);
   }
 
+  function addVariant() {
+    setForm((current) => ({
+      ...current,
+      variants: [...current.variants, { id: crypto.randomUUID(), sku: "", barcode: "", label: "", price: Number(current.price) || 0, stock: 0, minStock: 0, location: "" }],
+    }));
+  }
+
+  function addSerialUnit() {
+    setForm((current) => ({
+      ...current,
+      serialUnits: [...current.serialUnits, { id: crypto.randomUUID(), serialNumber: "", status: "disponible", location: "", variantId: current.variants[0]?.id }],
+    }));
+  }
+
   async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!form.name.trim() || !form.sku.trim() || Number(form.price) < 0) {
@@ -112,9 +132,10 @@ export default function PosProductosPage() {
       location: form.location.trim(),
       image: form.image.trim(),
       status: form.status,
-      hasVariants: editing?.hasVariants ?? false,
+      hasVariants: form.variants.length > 0,
       requiresSerial: form.requiresSerial,
-      variants: editing?.variants ?? [],
+      variants: form.variants.filter((variant) => variant.sku.trim() && variant.label.trim()).map((variant) => ({ ...variant, price: Number(variant.price) || 0, stock: Number(variant.stock) || 0, minStock: Number(variant.minStock) || 0 })),
+      serialUnits: form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
     };
     setSaving(true);
     setFormError(null);
@@ -343,6 +364,14 @@ export default function PosProductosPage() {
               <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={form.requiresSerial} onChange={(e) => setForm({ ...form, requiresSerial: e.target.checked })} /> Requiere número de serie</label>
               <label className="text-sm font-medium md:col-span-2">URL de imagen (opcional)<input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
             </div>
+            <section className="border-t border-north-border px-5 py-4">
+              <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Variantes</h3><p className="text-xs text-north-muted">Talla, rueda, color o modelo con stock propio.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar variante</button></div>
+              <div className="mt-3 space-y-3">{form.variants.map((variant, index) => <div key={variant.id} className="grid gap-2 border border-north-border bg-north-background p-3 md:grid-cols-4"><input aria-label="Etiqueta de variante" placeholder="Etiqueta (Talla M / Negro)" value={variant.label} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, label: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="SKU de variante" placeholder="SKU" value={variant.sku} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, sku: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Talla" placeholder="Talla" value={variant.size ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, size: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Rueda" placeholder="Rueda (29)" value={variant.wheelSize ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, wheelSize: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Color" placeholder="Color" value={variant.color ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, color: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Precio de variante" type="number" min="0" placeholder="Precio" value={variant.price} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, price: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Stock de variante" type="number" min="0" placeholder="Stock" value={variant.stock} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, stock: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, i) => i !== index) })} className="h-9 text-left text-xs text-red-700">Eliminar variante</button></div>)}</div>
+            </section>
+            <section className="border-t border-north-border px-5 py-4">
+              <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Números de serie</h3><p className="text-xs text-north-muted">Registra cada bicicleta individual.</p></div><button type="button" onClick={addSerialUnit} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar serie</button></div>
+              <div className="mt-3 space-y-2">{form.serialUnits.map((unit, index) => <div key={unit.id} className="grid gap-2 md:grid-cols-[1fr_180px_120px_auto]"><input aria-label="Número de serie" placeholder="Número de serie" value={unit.serialNumber} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, serialNumber: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><select aria-label="Variante de serie" value={unit.variantId ?? ""} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, variantId: e.target.value || undefined } : s) })} className="h-9 border border-north-border bg-white px-2 text-xs"><option value="">Producto base</option>{form.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label || "Variante sin etiqueta"}</option>)}</select><input aria-label="Ubicación de serie" placeholder="Ubicación" value={unit.location} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, location: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, serialUnits: form.serialUnits.filter((_, i) => i !== index) })} className="h-9 text-xs text-red-700">Eliminar</button></div>)}</div>
+            </section>
             {formError && <p className="mx-5 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
             <div className="flex justify-end gap-2 border-t border-north-border px-5 py-4">
               <button type="button" onClick={() => setFormOpen(false)} className="h-10 border border-north-border px-4 text-sm font-semibold">Cancelar</button>
