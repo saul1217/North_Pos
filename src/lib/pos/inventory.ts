@@ -26,6 +26,12 @@ export function getAvailableStock(
 
 export function getStockStatus(product: PosProduct, variantId?: string) {
   const variant = getVariant(product, variantId);
+  if (!variantId && product.hasVariants && product.variants.length > 0) {
+    const total = product.variants.reduce((sum, item) => sum + item.stock, 0);
+    if (total <= 0) return "agotado" as const;
+    if (product.variants.some((item) => item.stock <= item.minStock)) return "bajo" as const;
+    return "normal" as const;
+  }
   const stock = variant ? variant.stock : product.stock;
   const min = variant ? variant.minStock : product.minStock;
   if (stock <= 0) return "agotado" as const;
