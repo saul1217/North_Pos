@@ -1,4 +1,4 @@
-import { Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router-dom";
 import { useState } from "react";
 import { PosProvider } from "@/context/PosContext";
 import { PosSidebar } from "@/components/pos/PosSidebar";
@@ -8,6 +8,7 @@ import { AuthScreen } from "@/components/AuthScreen";
 import { ChangePasswordScreen } from "@/components/ChangePasswordScreen";
 import { clearAuthSession, getAuthSession, type AuthSession } from "@/lib/auth";
 import { usePos } from "@/context/PosContext";
+import { canAccess, defaultPath } from "@/lib/permissions";
 
 export function PosLayout() {
   return (
@@ -20,11 +21,14 @@ export function PosLayout() {
 function AuthenticatedPosLayout() {
   const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
   const { refreshCatalog } = usePos();
+  const pathname = useLocation().pathname;
 
   if (!session) {
     return <AuthScreen onLogin={(next) => { setSession(next); void refreshCatalog(); }} />;
   }
   if (session.user.mustChangePassword) return <ChangePasswordScreen session={session} onChanged={setSession} />;
+
+  if (!canAccess(session.user.role, pathname)) return <Navigate to={defaultPath(session.user.role)} replace />;
 
   function logout() {
     clearAuthSession();

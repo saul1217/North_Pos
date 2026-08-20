@@ -9,6 +9,7 @@ import {
   movementTypeLabels,
 } from "@/lib/pos/inventory";
 import type { InventoryAdjustmentType, PosProduct } from "@/lib/pos/types";
+import { getAuthSession } from "@/lib/auth";
 
 const adjTypes: { value: InventoryAdjustmentType; label: string }[] = [
   { value: "entrada", label: "Entrada" },
@@ -22,6 +23,7 @@ const adjTypes: { value: InventoryAdjustmentType; label: string }[] = [
 
 export default function PosInventarioPage() {
   const { products, movements, adjustInventory, getProductMovements } = usePos();
+  const canAdjust = getAuthSession()?.user.role === "admin";
   const [query, setQuery] = useState("");
   const [lowOnly, setLowOnly] = useState(false);
   const [tab, setTab] = useState<"stock" | "movimientos">("stock");
@@ -279,13 +281,13 @@ export default function PosInventarioPage() {
               </ul>
             </div>
 
-            <button
+            {canAdjust && <button
               type="button"
               onClick={() => setAdjOpen(true)}
               className="mt-4 h-10 w-full bg-north-primary text-sm text-white"
             >
               Ajuste de inventario
-            </button>
+            </button>}
           </aside>
         )}
       </div>
