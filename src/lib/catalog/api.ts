@@ -73,11 +73,16 @@ export function updateWorkshopOrder(
 
 export function updateWorkshopBudget(
   id: string,
-  budget: NonNullable<WorkshopOrder["budget"]>,
+  input: {
+    budget: NonNullable<WorkshopOrder["budget"]>;
+    clientProblem?: string;
+    diagnosis?: string;
+    technicalNotes?: string;
+  },
 ): Promise<WorkshopOrder> {
   return request<WorkshopOrder>(`/api/workshop-orders/${id}/budget`, {
     method: "PATCH",
-    body: JSON.stringify({ budget }),
+    body: JSON.stringify(input),
   });
 }
 

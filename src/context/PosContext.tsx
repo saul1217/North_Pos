@@ -246,7 +246,12 @@ type PosContextValue = {
     id: string,
     patch: Partial<WorkshopOrder>,
   ) => void;
-  updateWorkshopBudget: (id: string, budget: NonNullable<WorkshopOrder["budget"]>) => Promise<WorkshopOrder>;
+  updateWorkshopBudget: (id: string, input: {
+    budget: NonNullable<WorkshopOrder["budget"]>;
+    clientProblem?: string;
+    diagnosis?: string;
+    technicalNotes?: string;
+  }) => Promise<WorkshopOrder>;
   payWorkshopOrder: (id: string, method: string) => Promise<WorkshopOrder>;
   getProductMovements: (productId: string) => InventoryMovement[];
   closeSuccess: () => void;
@@ -906,8 +911,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const updateWorkshopBudget = useCallback(async (id: string, budget: NonNullable<WorkshopOrder["budget"]>) => {
-    const updated = await updateWorkshopBudgetApi(id, budget);
+  const updateWorkshopBudget = useCallback(async (id: string, input: {
+    budget: NonNullable<WorkshopOrder["budget"]>;
+    clientProblem?: string;
+    diagnosis?: string;
+    technicalNotes?: string;
+  }) => {
+    const updated = await updateWorkshopBudgetApi(id, input);
     persist({ workshopOrders: store.workshopOrders.map((order) => order.id === id ? updated : order) });
     return updated;
   }, []);

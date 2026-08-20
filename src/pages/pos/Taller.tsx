@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Printer, Wrench } from "lucide-react";
+import { CheckCircle2, LockKeyhole, Plus, Printer, Wrench } from "lucide-react";
 import { useState } from "react";
 import { usePos } from "@/context/PosContext";
 import { formatPosPrice } from "@/lib/pos/inventory";
@@ -16,7 +16,6 @@ import { getAuthSession } from "@/lib/auth";
 const statusOptions: WorkshopStatus[] = [
   "diagnosticada",
   "terminada",
-  "entregada",
 ];
 
 const statusLabels: Record<WorkshopStatus, string> = {
@@ -41,6 +40,7 @@ export default function PosTallerPage() {
   const isCashier = role === "cajero";
 
   const [view, setView] = useState<"list" | "new">("list");
+  const [orderFilter, setOrderFilter] = useState<"activas" | "procesadas">("activas");
   const [selected, setSelected] = useState<WorkshopOrder | null>(null);
   const [printOrder, setPrintOrder] = useState<WorkshopOrder | null>(null);
 
@@ -69,6 +69,15 @@ export default function PosTallerPage() {
   const [technicalNotes, setTechnicalNotes] = useState("");
   const [budgetItems, setBudgetItems] = useState<WorkshopBudgetItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "transferencia">("efectivo");
+  const [savingBudget, setSavingBudget] = useState(false);
+
+  const filteredOrders = workshopOrders.filter((order) =>
+    orderFilter === "activas"
+      ? order.status !== "entregada" && order.status !== "cancelada"
+      : order.status === "entregada" || order.status === "cancelada",
+  );
+  const isClosed = selected?.status === "entregada" || selected?.status === "cancelada";
+  const isBudgetLocked = isClosed || selected?.paymentStatus === "pagada";
 
   function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -161,20 +170,29 @@ export default function PosTallerPage() {
 
   async function saveBudget() {
     if (!selected) return;
+    setSavingBudget(true);
+    setFormError("");
     const subtotal = budgetItems.reduce(
       (s, i) => s + i.price * i.quantity,
       0,
     );
     try {
       const updated = await updateWorkshopBudget(selected.id, {
-        items: budgetItems,
-        subtotal,
-        total: subtotal,
-        status: "pendiente",
+        budget: {
+          items: budgetItems,
+          subtotal,
+          total: subtotal,
+          status: "pendiente",
+        },
+        clientProblem: selected.clientProblem,
+        diagnosis,
+        technicalNotes,
       });
       setSelected(updated);
     } catch (error) {
       setFormError((error as Error).message);
+    } finally {
+      setSavingBudget(false);
     }
   }
 
@@ -186,6 +204,13 @@ export default function PosTallerPage() {
     } catch (error) {
       setFormError((error as Error).message);
     }
+  }
+
+  function confirmDelivery() {
+    if (!selected || selected.status !== "terminada" || selected.paymentStatus !== "pagada") return;
+    updateWorkshopOrder(selected.id, { status: "entregada" });
+    setSelected({ ...selected, status: "entregada" });
+    setOrderFilter("procesadas");
   }
 
   function addBudgetLine() {
@@ -231,6 +256,30 @@ export default function PosTallerPage() {
               </button>
             )}
           </div>
+          <div className="mt-5 flex gap-1 border-b border-north-border">
+            {(["activas", "procesadas"] as const).map((filter) => (
+              <button
+                key={filter}
+                type="button"
+                onClick={() => {
+                  setOrderFilter(filter);
+                  setSelected(null);
+                }}
+                className={`border-b-2 px-3 py-2 text-sm font-semibold ${
+                  orderFilter === filter
+                    ? "border-north-primary text-north-primary"
+                    : "border-transparent text-north-muted"
+                }`}
+              >
+                {filter === "activas" ? "Órdenes activas" : "Órdenes procesadas"}
+                <span className="ml-2 text-xs font-normal">
+                  ({filter === "activas"
+                    ? workshopOrders.filter((o) => o.status !== "entregada" && o.status !== "cancelada").length
+                    : workshopOrders.filter((o) => o.status === "entregada" || o.status === "cancelada").length})
+                </span>
+              </button>
+            ))}
+          </div>
         </header>
 
         {view === "list" ? (
@@ -244,11 +293,12 @@ export default function PosTallerPage() {
                     <th className="px-4 py-3">Bicicleta</th>
                     <th className="px-4 py-3">Fecha</th>
                     <th className="px-4 py-3">Estado</th>
+                    <th className="px-4 py-3">Pago</th>
                     <th className="px-4 py-3">Presupuesto</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {workshopOrders.map((o) => (
+                  {filteredOrders.map((o) => (
                     <tr
                       key={o.id}
                       onClick={() => {
@@ -271,6 +321,11 @@ export default function PosTallerPage() {
                       </td>
                       <td className="px-4 py-3">{statusLabels[o.status] ?? o.status}</td>
                       <td className="px-4 py-3">
+                        <span className={o.paymentStatus === "pagada" ? "font-semibold text-emerald-700" : "text-amber-700"}>
+                          {o.paymentStatus === "pagada" ? "Pagado" : "Pendiente"}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
                         {o.budget
                           ? formatPosPrice(o.budget.total)
                           : "—"}
@@ -289,6 +344,35 @@ export default function PosTallerPage() {
                   {selected.paymentStatus === "pagada" && " · Pago confirmado"}
                 </p>
 
+                {isCashier && (
+                  <div className="mt-4 space-y-2 border border-north-border bg-north-background p-3 text-sm">
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-2">
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-north-steel">Cliente</p>
+                        <p>{selected.customer.name}</p>
+                        <p className="text-xs text-north-muted">{selected.customer.phone}</p>
+                      </div>
+                      <div>
+                        <p className="text-[10px] font-semibold uppercase text-north-steel">Bicicleta</p>
+                        <p>{selected.bike.brand} {selected.bike.model}</p>
+                        <p className="text-xs text-north-muted">{selected.bike.color || selected.bike.bikeType}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase text-north-steel">Problema reportado</p>
+                      <p>{selected.clientProblem || "Sin problema registrado"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase text-north-steel">Diagnóstico</p>
+                      <p>{selected.diagnosis || "Sin diagnóstico registrado"}</p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase text-north-steel">Trabajo indicado</p>
+                      <p>{selected.technicalNotes || "Sin observaciones técnicas"}</p>
+                    </div>
+                  </div>
+                )}
+
                 {selected.photos.length > 0 && (
                   <div className="mt-4 flex gap-2 overflow-x-auto">
                     {selected.photos.map((src, i) => (
@@ -303,7 +387,7 @@ export default function PosTallerPage() {
                   </div>
                 )}
 
-                {!isCashier && <div className="mt-4 space-y-2">
+                {!isCashier && !isClosed && <div className="mt-4 space-y-2">
                   <label className="text-xs font-semibold uppercase text-north-steel">
                     Diagnóstico
                   </label>
@@ -334,8 +418,9 @@ export default function PosTallerPage() {
                     </p>
                     <button
                       type="button"
+                      disabled={isBudgetLocked}
                       onClick={addBudgetLine}
-                      className="text-xs text-north-primary"
+                      className="text-xs text-north-primary disabled:text-north-muted"
                     >
                       + Línea
                     </button>
@@ -344,6 +429,7 @@ export default function PosTallerPage() {
                     <div key={item.id} className="mb-2 flex gap-1">
                       <input
                         value={item.description}
+                        disabled={isBudgetLocked}
                         onChange={(e) =>
                           setBudgetItems((prev) =>
                             prev.map((b, i) =>
@@ -358,6 +444,7 @@ export default function PosTallerPage() {
                       <input
                         type="number"
                         value={item.price || ""}
+                        disabled={isBudgetLocked}
                         onChange={(e) =>
                           setBudgetItems((prev) =>
                             prev.map((b, i) =>
@@ -371,13 +458,19 @@ export default function PosTallerPage() {
                       />
                     </div>
                   ))}
-                  <button
+                  {!isBudgetLocked && <button
                     type="button"
+                    disabled={savingBudget}
                     onClick={() => void saveBudget()}
                     className="h-9 w-full bg-north-primary text-sm text-white"
                   >
-                    {isCashier ? "Guardar presupuesto" : "Guardar diagnóstico y enviar a caja"}
-                  </button>
+                    {savingBudget ? "Guardando..." : isCashier ? "Guardar presupuesto" : "Guardar diagnóstico y enviar a caja"}
+                  </button>}
+                  {formError && (
+                    <p className="mt-2 border border-red-200 bg-red-50 px-2 py-2 text-xs text-red-700">
+                      No se pudo guardar: {formError}
+                    </p>
+                  )}
                 </div>
 
                 {isCashier && selected.budget && (selected.status === "diagnosticada" || selected.status === "terminada") && selected.paymentStatus !== "pagada" && (
@@ -403,7 +496,7 @@ export default function PosTallerPage() {
                   </div>
                 )}
 
-                {!isCashier && selected.status !== "recibida" && <select
+                {!isCashier && !isClosed && selected.status !== "recibida" && !(selected.status === "terminada" && selected.paymentStatus === "pagada") && <select
                   value={selected.status}
                   onChange={(e) =>
                     updateWorkshopOrder(selected.id, {
@@ -418,6 +511,30 @@ export default function PosTallerPage() {
                     </option>
                   ))}
                 </select>}
+
+                {!isCashier && selected.status === "terminada" && selected.paymentStatus === "pagada" && (
+                  <button
+                    type="button"
+                    onClick={confirmDelivery}
+                    className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 bg-north-primary text-sm font-semibold text-white"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    Confirmar entrega
+                  </button>
+                )}
+
+                {selected.status === "terminada" && selected.paymentStatus !== "pagada" && (
+                  <p className="mt-4 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+                    Falta confirmar el pago antes de entregar la bicicleta.
+                  </p>
+                )}
+
+                {isClosed && (
+                  <p className="mt-4 inline-flex w-full items-center justify-center gap-2 border border-north-border bg-north-background px-3 py-2 text-xs text-north-muted">
+                    <LockKeyhole className="h-3.5 w-3.5" />
+                    Orden cerrada: edición bloqueada
+                  </p>
+                )}
 
                 <button
                   type="button"
