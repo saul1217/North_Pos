@@ -163,6 +163,9 @@ function daysInMonth(year: number, month: number) {
  * No se persiste: el POS operativo sigue con ventas reales de la demo.
  */
 export function generateHistoricalSales(now = new Date()): CompletedSale[] {
+  // Sin datos demo: las analíticas se calculan solo con ventas reales.
+  return [];
+  // eslint-disable-next-line no-unreachable
   const rng = mulberry32(20260818);
   const sales: CompletedSale[] = [];
   let folio = 180;

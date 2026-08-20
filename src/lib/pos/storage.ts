@@ -6,70 +6,20 @@ import type {
   Quotation,
   WorkshopOrder,
 } from "@/lib/pos/types";
-import { posProductsSeed } from "@/lib/pos/data/products";
 
 export const POS_STATE_KEY = "northbike-pos-state-v2";
 
-function seedSales(): CompletedSale[] {
-  return [
-    {
-      id: "seed-001",
-      folio: "NB-00042",
-      date: new Date(Date.now() - 86400000 * 2).toISOString(),
-      items: [
-        {
-          lineId: "pos-004::base::",
-          productId: "pos-004",
-          sku: "NB-MAXXIS-DHF",
-          name: "Maxxis Minion DHF 29x2.5",
-          price: 1499,
-          quantity: 2,
-        },
-      ],
-      subtotal: 2998,
-      discount: 0,
-      total: 2998,
-      payments: [{ method: "tarjeta", amount: 2998 }],
-      status: "completada",
-      returns: [],
-    },
-    {
-      id: "seed-002",
-      folio: "NB-00041",
-      date: new Date(Date.now() - 86400000).toISOString(),
-      items: [
-        {
-          lineId: "pos-003::v-003-m::",
-          productId: "pos-003",
-          variantId: "v-003-m",
-          sku: "NB-GIRO-MAN-M",
-          name: "Casco Giro Manifest Spherical",
-          variantLabel: "Talla M",
-          price: 6499,
-          quantity: 1,
-        },
-      ],
-      subtotal: 6499,
-      discount: 0,
-      total: 6499,
-      payments: [{ method: "efectivo", amount: 6499 }],
-      amountReceived: 7000,
-      change: 501,
-      status: "completada",
-      returns: [],
-    },
-  ];
-}
-
+// Estado inicial de una instalación limpia: sin datos demo. El catálogo real
+// se gestiona aparte (backend / alta de productos).
 export function getDefaultState(): PosPersistedState {
   return {
-    products: posProductsSeed,
-    sales: seedSales(),
+    products: [],
+    sales: [],
     movements: [],
     layaways: [],
     quotations: [],
     workshopOrders: [],
-    folioCounter: 42,
+    folioCounter: 0,
     layawayFolioCounter: 0,
     quoteFolioCounter: 0,
     workshopFolioCounter: 0,
@@ -107,7 +57,7 @@ export function loadPosState(): PosPersistedState {
     return {
       ...getDefaultState(),
       ...parsed,
-      products: parsed.products?.length ? parsed.products : posProductsSeed,
+      products: parsed.products ?? [],
     };
   } catch {
     return getDefaultState();

@@ -13,6 +13,8 @@ release/
 .env
 .env.*
 !.env.example
+# La URL de Railway es pública (no secreta): se versiona para builds reproducibles.
+!.env.production
 
 # Logs
 *.log
