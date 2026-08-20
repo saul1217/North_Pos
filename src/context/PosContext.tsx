@@ -49,6 +49,9 @@ import {
 import {
   createProduct as createProductApi,
   fetchProducts,
+  fetchWorkshopOrders,
+  createWorkshopOrder as createWorkshopOrderApi,
+  updateWorkshopOrder as updateWorkshopOrderApi,
   updateProduct as updateProductApi,
   type ProductInput,
 } from "@/lib/catalog/api";
@@ -279,6 +282,22 @@ export function PosProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (typeof window !== "undefined") void refreshCatalog();
   }, [refreshCatalog]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !getAccessToken()) return;
+    void fetchWorkshopOrders()
+      .then((remoteOrders) => {
+        const remoteIds = new Set(remoteOrders.map((order) => order.id));
+        const localOnly = store.workshopOrders.filter((order) => !remoteIds.has(order.id));
+        persist({ workshopOrders: [...remoteOrders, ...localOnly] });
+        return Promise.all(
+          localOnly.map((order) =>
+            createWorkshopOrderApi(order).catch(() => undefined),
+          ),
+        );
+      })
+      .catch(() => undefined);
+  }, []);
 
   const createProduct = useCallback(async (input: ProductInput) => {
     const product = await createProductApi(input);
@@ -861,6 +880,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
         workshopFolioCounter: store.workshopFolioCounter + 1,
       });
 
+      void createWorkshopOrderApi(workshopOrder).catch(() => undefined);
+
       return workshopOrder;
     },
     [],
@@ -868,11 +889,15 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const updateWorkshopOrder = useCallback(
     (id: string, patch: Partial<WorkshopOrder>) => {
+      const updated = store.workshopOrders.find((order) => order.id === id);
       persist({
         workshopOrders: store.workshopOrders.map((o) =>
           o.id === id ? { ...o, ...patch } : o,
         ),
       });
+      if (updated) {
+        void updateWorkshopOrderApi(id, { ...updated, ...patch }).catch(() => undefined);
+      }
     },
     [],
   );

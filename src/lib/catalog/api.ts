@@ -1,5 +1,5 @@
 import { API_BASE } from "@/lib/sync/sync";
-import type { PosProduct, ProductVariant } from "@/lib/pos/types";
+import type { PosProduct, ProductVariant, WorkshopOrder } from "@/lib/pos/types";
 import { getAccessToken, type AuthSession } from "@/lib/auth";
 
 export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
@@ -45,6 +45,27 @@ export function createProduct(input: ProductInput): Promise<PosProduct> {
 
 export function updateProduct(id: string, input: ProductInput): Promise<PosProduct> {
   return request<PosProduct>(`/api/products/${id}`, {
+    method: "PATCH",
+    body: JSON.stringify(input),
+  });
+}
+
+export function fetchWorkshopOrders(): Promise<WorkshopOrder[]> {
+  return request<WorkshopOrder[]>("/api/workshop-orders");
+}
+
+export function createWorkshopOrder(input: WorkshopOrder): Promise<WorkshopOrder> {
+  return request<WorkshopOrder>("/api/workshop-orders", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateWorkshopOrder(
+  id: string,
+  input: Partial<WorkshopOrder>,
+): Promise<WorkshopOrder> {
+  return request<WorkshopOrder>(`/api/workshop-orders/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),
   });
