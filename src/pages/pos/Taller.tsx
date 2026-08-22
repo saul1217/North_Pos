@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle2, LockKeyhole, Plus, Printer, Wrench } from "lucide-react";
+import { CheckCircle2, LockKeyhole, Plus, Printer, RefreshCw, Wrench } from "lucide-react";
 import { useState } from "react";
 import { usePos } from "@/context/PosContext";
 import { formatPosPrice } from "@/lib/pos/inventory";
@@ -34,6 +34,9 @@ export default function PosTallerPage() {
     updateWorkshopOrder,
     updateWorkshopBudget,
     payWorkshopOrder,
+    workshopLoading,
+    workshopError,
+    refreshWorkshopOrders,
   } = usePos();
 
   const role = getAuthSession()?.user.role;
@@ -255,6 +258,15 @@ export default function PosTallerPage() {
                 )}
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => void refreshWorkshopOrders()}
+              disabled={workshopLoading}
+              className="inline-flex h-10 items-center gap-2 border border-north-border px-3 text-sm font-semibold disabled:opacity-50"
+            >
+              <RefreshCw className={`h-4 w-4 ${workshopLoading ? "animate-spin" : ""}`} />
+              Actualizar órdenes
+            </button>
           </div>
           <div className="mt-5 flex gap-1 border-b border-north-border">
             {(["activas", "procesadas"] as const).map((filter) => (
@@ -298,7 +310,13 @@ export default function PosTallerPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredOrders.map((o) => (
+                  {workshopLoading ? (
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-north-muted">Cargando órdenes centralizadas...</td></tr>
+                  ) : workshopError ? (
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-red-700">No se pudieron cargar las órdenes: {workshopError}</td></tr>
+                  ) : filteredOrders.length === 0 ? (
+                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-north-muted">No hay órdenes en esta sección.</td></tr>
+                  ) : filteredOrders.map((o) => (
                     <tr
                       key={o.id}
                       onClick={() => {

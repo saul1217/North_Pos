@@ -6,6 +6,7 @@ import {
   useContext,
   useMemo,
   useEffect,
+  useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
@@ -25,6 +26,7 @@ import type {
   SaleLineItem,
   SaleReturnRecord,
   WorkshopOrder,
+  WorkshopSyncOperation,
 } from "@/lib/pos/types";
 import { defaultReceptionChecklist } from "@/lib/pos/data/checklist";
 import {
@@ -122,6 +124,7 @@ function persist(partial: Partial<PosStore>) {
     layaways,
     quotations,
     workshopOrders,
+    workshopSyncQueue,
     folioCounter,
     layawayFolioCounter,
     quoteFolioCounter,
@@ -134,6 +137,7 @@ function persist(partial: Partial<PosStore>) {
     layaways,
     quotations,
     workshopOrders,
+    workshopSyncQueue,
     folioCounter,
     layawayFolioCounter,
     quoteFolioCounter,
@@ -253,6 +257,11 @@ type PosContextValue = {
     technicalNotes?: string;
   }) => Promise<WorkshopOrder>;
   payWorkshopOrder: (id: string, method: string) => Promise<WorkshopOrder>;
+  workshopLoading: boolean;
+  workshopError: string | null;
+  refreshWorkshopOrders: () => Promise<void>;
+  workshopSyncPending: number;
+  syncWorkshopOrders: () => Promise<void>;
   getProductMovements: (productId: string) => InventoryMovement[];
   closeSuccess: () => void;
   openTicket: () => void;
@@ -268,6 +277,9 @@ const PosContext = createContext<PosContextValue | null>(null);
 export function PosProvider({ children }: { children: ReactNode }) {
   const [catalogLoading, setCatalogLoading] = useState(false);
   const [catalogError, setCatalogError] = useState<string | null>(null);
+  const [workshopLoading, setWorkshopLoading] = useState(false);
+  const [workshopError, setWorkshopError] = useState<string | null>(null);
+  const workshopSyncingRef = useRef(false);
   const snapshot = useSyncExternalStore(
     subscribe,
     getSnapshot,
@@ -292,21 +304,78 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (typeof window !== "undefined") void refreshCatalog();
   }, [refreshCatalog]);
 
-  useEffect(() => {
-    if (typeof window === "undefined" || !getAccessToken()) return;
-    void fetchWorkshopOrders()
-      .then((remoteOrders) => {
-        const remoteIds = new Set(remoteOrders.map((order) => order.id));
-        const localOnly = store.workshopOrders.filter((order) => !remoteIds.has(order.id));
-        persist({ workshopOrders: [...remoteOrders, ...localOnly] });
-        return Promise.all(
-          localOnly.map((order) =>
-            createWorkshopOrderApi(order).catch(() => undefined),
-          ),
-        );
-      })
-      .catch(() => undefined);
+  const syncWorkshopOrders = useCallback(async () => {
+    if (!getAccessToken() || workshopSyncingRef.current) return;
+    workshopSyncingRef.current = true;
+    try {
+      for (const operation of [...store.workshopSyncQueue]) {
+        try {
+          let synced: WorkshopOrder;
+          if (operation.kind === "create") {
+            synced = await createWorkshopOrderApi(operation.payload);
+          } else if (operation.kind === "budget") {
+            synced = await updateWorkshopBudgetApi(operation.orderId, operation.payload);
+          } else {
+            synced = await updateWorkshopOrderApi(operation.orderId, operation.payload);
+          }
+          persist({
+            workshopOrders: store.workshopOrders.map((order) => order.id === synced.id ? synced : order),
+            workshopSyncQueue: store.workshopSyncQueue.filter((item) => item.id !== operation.id),
+          });
+        } catch (error) {
+          setWorkshopError((error as Error).message || "No se pudo sincronizar una orden");
+          break;
+        }
+      }
+    } finally {
+      workshopSyncingRef.current = false;
+    }
   }, []);
+
+  const refreshWorkshopOrders = useCallback(async () => {
+    if (!getAccessToken()) return;
+    setWorkshopLoading(true);
+    setWorkshopError(null);
+    try {
+      const remoteOrders = await fetchWorkshopOrders();
+      const pendingOperations = store.workshopSyncQueue;
+      const pendingByOrder = new Map<string, WorkshopSyncOperation[]>();
+      pendingOperations.forEach((operation) => {
+        const current = pendingByOrder.get(operation.orderId) ?? [];
+        pendingByOrder.set(operation.orderId, [...current, operation]);
+      });
+      const mergedRemote = remoteOrders.map((remote) => {
+        const operations = pendingByOrder.get(remote.id) ?? [];
+        return operations.reduce<WorkshopOrder>((order, operation) => ({
+          ...order,
+          ...(operation.kind === "create" ? operation.payload : operation.payload),
+        }), remote);
+      });
+      const remoteIds = new Set(mergedRemote.map((order) => order.id));
+      const localOnly = store.workshopOrders.filter((order) => !remoteIds.has(order.id));
+      const missingQueue = localOnly
+        .filter((order) => !store.workshopSyncQueue.some((operation) => operation.orderId === order.id))
+        .map((order): WorkshopSyncOperation => ({ id: crypto.randomUUID(), orderId: order.id, kind: "create", payload: order, createdAt: new Date().toISOString() }));
+      persist({ workshopOrders: [...mergedRemote, ...localOnly], workshopSyncQueue: [...store.workshopSyncQueue, ...missingQueue] });
+      await syncWorkshopOrders();
+    } catch (error) {
+      setWorkshopError((error as Error).message || "No se pudieron cargar las órdenes");
+    } finally {
+      setWorkshopLoading(false);
+    }
+  }, [syncWorkshopOrders]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    void refreshWorkshopOrders();
+    const onOnline = () => void refreshWorkshopOrders();
+    const interval = window.setInterval(() => void refreshWorkshopOrders(), 30000);
+    window.addEventListener("online", onOnline);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("online", onOnline);
+    };
+  }, [refreshWorkshopOrders]);
 
   const createProduct = useCallback(async (input: ProductInput) => {
     const product = await createProductApi(input);
@@ -886,29 +955,38 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
       persist({
         workshopOrders: [workshopOrder, ...store.workshopOrders],
+        workshopSyncQueue: [
+          ...store.workshopSyncQueue,
+          { id: crypto.randomUUID(), orderId: workshopOrder.id, kind: "create", payload: workshopOrder, createdAt: new Date().toISOString() },
+        ],
         workshopFolioCounter: store.workshopFolioCounter + 1,
       });
 
-      void createWorkshopOrderApi(workshopOrder).catch(() => undefined);
+      void syncWorkshopOrders();
 
       return workshopOrder;
     },
-    [],
+    [syncWorkshopOrders],
   );
 
   const updateWorkshopOrder = useCallback(
     (id: string, patch: Partial<WorkshopOrder>) => {
       const updated = store.workshopOrders.find((order) => order.id === id);
+      const nextOrder = updated
+        ? { ...updated, ...patch }
+        : undefined;
       persist({
         workshopOrders: store.workshopOrders.map((o) =>
           o.id === id ? { ...o, ...patch } : o,
         ),
+        workshopSyncQueue: nextOrder ? [
+          ...store.workshopSyncQueue,
+          { id: crypto.randomUUID(), orderId: id, kind: "update", payload: patch, createdAt: new Date().toISOString() },
+        ] : store.workshopSyncQueue,
       });
-      if (updated) {
-        void updateWorkshopOrderApi(id, { ...updated, ...patch }).catch(() => undefined);
-      }
+      if (nextOrder) void syncWorkshopOrders();
     },
-    [],
+    [syncWorkshopOrders],
   );
 
   const updateWorkshopBudget = useCallback(async (id: string, input: {
@@ -917,10 +995,19 @@ export function PosProvider({ children }: { children: ReactNode }) {
     diagnosis?: string;
     technicalNotes?: string;
   }) => {
-    const updated = await updateWorkshopBudgetApi(id, input);
-    persist({ workshopOrders: store.workshopOrders.map((order) => order.id === id ? updated : order) });
+    const current = store.workshopOrders.find((order) => order.id === id);
+    if (!current) throw new Error("Orden de taller no encontrada");
+    const updated = { ...current, ...input, budget: input.budget, status: "diagnosticada" as const };
+    persist({
+      workshopOrders: store.workshopOrders.map((order) => order.id === id ? updated : order),
+      workshopSyncQueue: [
+        ...store.workshopSyncQueue,
+        { id: crypto.randomUUID(), orderId: id, kind: "budget", payload: input, createdAt: new Date().toISOString() },
+      ],
+    });
+    void syncWorkshopOrders();
     return updated;
-  }, []);
+  }, [syncWorkshopOrders]);
 
   const payWorkshopOrder = useCallback(async (id: string, method: string) => {
     const updated = await payWorkshopOrderApi(id, { saleId: crypto.randomUUID(), method });
@@ -989,6 +1076,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
       updateWorkshopOrder,
       updateWorkshopBudget,
       payWorkshopOrder,
+      workshopLoading,
+      workshopError,
+      refreshWorkshopOrders,
+      workshopSyncPending: snapshot.workshopSyncQueue.length,
+      syncWorkshopOrders,
       getProductMovements,
       closeSuccess,
       openTicket,
@@ -1026,6 +1118,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
       updateWorkshopOrder,
       updateWorkshopBudget,
       payWorkshopOrder,
+      workshopLoading,
+      workshopError,
+      refreshWorkshopOrders,
+      syncWorkshopOrders,
       getProductMovements,
       closeSuccess,
       openTicket,

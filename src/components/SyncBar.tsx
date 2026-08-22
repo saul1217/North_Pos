@@ -7,7 +7,7 @@ import { pendingSales, syncSales } from "@/lib/sync/sync";
 // hook (no coupling to POS internals) and pushes the pending ones to the
 // backend automatically: shortly after a sale, on reconnect, and on a timer.
 export function SyncBar() {
-  const { sales } = usePos();
+  const { sales, workshopSyncPending, syncWorkshopOrders } = usePos();
   const [online, setOnline] = useState(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -27,9 +27,10 @@ export function SyncBar() {
     const res = await syncSales(salesRef.current);
     setPending(res.pending);
     setError(res.ok ? null : (res.error ?? "error"));
+    await syncWorkshopOrders();
     setSyncing(false);
     syncingRef.current = false;
-  }, []);
+  }, [syncWorkshopOrders]);
 
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
@@ -57,7 +58,8 @@ export function SyncBar() {
     };
   }, [runSync]);
 
-  const state = !online ? "offline" : pending > 0 ? "pending" : "synced";
+  const totalPending = pending + workshopSyncPending;
+  const state = !online ? "offline" : totalPending > 0 ? "pending" : "synced";
   const styles = {
     offline: "border-red-200 bg-red-50 text-red-700",
     pending: "border-amber-200 bg-amber-50 text-amber-800",
@@ -65,8 +67,8 @@ export function SyncBar() {
   }[state];
   const label = !online
     ? "Sin conexión"
-    : pending > 0
-      ? `${pending} venta${pending === 1 ? "" : "s"} por sincronizar`
+    : totalPending > 0
+      ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} por sincronizar`
       : "Ventas sincronizadas";
   const Icon = !online ? CloudOff : pending > 0 ? Cloud : Check;
 

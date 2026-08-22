@@ -5,6 +5,7 @@ import type {
   PosPersistedState,
   Quotation,
   WorkshopOrder,
+  WorkshopSyncOperation,
 } from "@/lib/pos/types";
 
 export const POS_STATE_KEY = "northbike-pos-state-v2";
@@ -19,6 +20,7 @@ export function getDefaultState(): PosPersistedState {
     layaways: [],
     quotations: [],
     workshopOrders: [],
+    workshopSyncQueue: [],
     folioCounter: 0,
     layawayFolioCounter: 0,
     quoteFolioCounter: 0,
@@ -58,6 +60,7 @@ export function loadPosState(): PosPersistedState {
       ...getDefaultState(),
       ...parsed,
       products: parsed.products ?? [],
+      workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
     };
   } catch {
     return getDefaultState();

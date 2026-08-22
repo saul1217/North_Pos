@@ -248,6 +248,11 @@ export type WorkshopOrder = {
   assignedTo: string;
 };
 
+export type WorkshopSyncOperation =
+  | { id: string; orderId: string; kind: "create"; payload: WorkshopOrder; createdAt: string }
+  | { id: string; orderId: string; kind: "update"; payload: Partial<WorkshopOrder>; createdAt: string }
+  | { id: string; orderId: string; kind: "budget"; payload: { budget: WorkshopBudget; clientProblem?: string; diagnosis?: string; technicalNotes?: string }; createdAt: string };
+
 export type PosPersistedState = {
   products: PosProduct[];
   sales: CompletedSale[];
@@ -255,6 +260,7 @@ export type PosPersistedState = {
   layaways: Layaway[];
   quotations: Quotation[];
   workshopOrders: WorkshopOrder[];
+  workshopSyncQueue: WorkshopSyncOperation[];
   folioCounter: number;
   layawayFolioCounter: number;
   quoteFolioCounter: number;
