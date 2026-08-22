@@ -13,4 +13,6 @@ contextBridge.exposeInMainWorld("pos", {
   loadStateSync: () => ipcRenderer.sendSync("pos:loadStateSync"),
   saveState: (dataJson) => ipcRenderer.invoke("pos:saveState", dataJson),
   dbPath: () => ipcRenderer.invoke("pos:dbPath"),
+  exportBackup: () => ipcRenderer.invoke("pos:exportBackup"),
+  importBackup: () => ipcRenderer.invoke("pos:importBackup"),
 });

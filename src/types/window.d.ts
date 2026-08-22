@@ -12,6 +12,8 @@ declare global {
       loadStateSync: () => string | null;
       saveState: (dataJson: string) => Promise<boolean>;
       dbPath: () => Promise<string>;
+      exportBackup: () => Promise<{ canceled: boolean; path?: string }>;
+      importBackup: () => Promise<{ canceled: boolean; path?: string; safetyBackup?: string }>;
     };
   }
 }

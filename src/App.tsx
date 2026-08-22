@@ -9,6 +9,7 @@ import Cotizaciones from "@/pages/pos/Cotizaciones";
 import Taller from "@/pages/pos/Taller";
 import Analiticas from "@/pages/pos/Analiticas";
 import Usuarios from "@/pages/pos/Usuarios";
+import Respaldo from "@/pages/pos/Respaldo";
 
 // Standalone POS app. Routes stay under /pos/* so the sidebar (which links
 // to /pos/venta, /pos/productos, …) works unchanged. Anything else redirects
@@ -28,6 +29,7 @@ export function App() {
           <Route path="taller" element={<Taller />} />
           <Route path="analiticas" element={<Analiticas />} />
           <Route path="usuarios" element={<Usuarios />} />
+          <Route path="respaldo" element={<Respaldo />} />
         </Route>
         <Route path="*" element={<Navigate to="/pos/venta" replace />} />
       </Routes>

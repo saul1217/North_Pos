@@ -1,6 +1,7 @@
-const path = require("node:path");
 const { app } = require("electron");
 const Database = require("better-sqlite3");
+const fs = require("node:fs");
+const path = require("node:path");
 
 let db = null;
 
@@ -42,4 +43,44 @@ function saveState(dataJson) {
     .run({ data: dataJson, ts: new Date().toISOString() });
 }
 
-module.exports = { getDb, dbPath, loadState, saveState };
+async function exportBackup(destination) {
+  const database = getDb();
+  database.pragma("wal_checkpoint(TRUNCATE)");
+  await database.backup(destination);
+  return destination;
+}
+
+function validateBackup(source) {
+  if (!fs.existsSync(source)) throw new Error("El archivo de respaldo no existe");
+  const backup = new Database(source, { readonly: true, fileMustExist: true });
+  try {
+    const row = backup.prepare("SELECT data FROM pos_state WHERE id = 1").get();
+    if (!row?.data) throw new Error("El archivo no contiene datos del POS");
+    const data = JSON.parse(row.data);
+    if (!data || !Array.isArray(data.products) || !Array.isArray(data.sales)) {
+      throw new Error("El archivo de respaldo no es compatible con North Bike POS");
+    }
+  } finally {
+    backup.close();
+  }
+}
+
+function restoreBackup(source) {
+  validateBackup(source);
+  const current = dbPath();
+  const safetyBackup = `${current}.before-restore-${Date.now()}`;
+  if (db) {
+    db.pragma("wal_checkpoint(TRUNCATE)");
+    db.close();
+    db = null;
+  }
+  if (fs.existsSync(current)) fs.copyFileSync(current, safetyBackup);
+  for (const suffix of ["-wal", "-shm"]) {
+    const sidecar = `${current}${suffix}`;
+    if (fs.existsSync(sidecar)) fs.rmSync(sidecar);
+  }
+  fs.copyFileSync(source, current);
+  return { path: current, safetyBackup };
+}
+
+module.exports = { getDb, dbPath, loadState, saveState, exportBackup, restoreBackup };

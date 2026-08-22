@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain } = require("electron");
 const path = require("node:path");
 const db = require("./db.cjs");
 
@@ -20,6 +20,27 @@ ipcMain.handle("pos:saveState", (_event, dataJson) => {
   return true;
 });
 ipcMain.handle("pos:dbPath", () => db.dbPath());
+ipcMain.handle("pos:exportBackup", async () => {
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const result = await dialog.showSaveDialog({
+    title: "Exportar respaldo del POS",
+    defaultPath: path.join(app.getPath("documents"), `northbike-pos-backup-${stamp}.nbpos`),
+    filters: [{ name: "Respaldo North Bike POS", extensions: ["nbpos"] }],
+  });
+  if (result.canceled || !result.filePath) return { canceled: true };
+  await db.exportBackup(result.filePath);
+  return { canceled: false, path: result.filePath };
+});
+ipcMain.handle("pos:importBackup", async () => {
+  const result = await dialog.showOpenDialog({
+    title: "Restaurar respaldo del POS",
+    properties: ["openFile"],
+    filters: [{ name: "Respaldo North Bike POS", extensions: ["nbpos", "db"] }],
+  });
+  if (result.canceled || !result.filePaths[0]) return { canceled: true };
+  const restored = db.restoreBackup(result.filePaths[0]);
+  return { canceled: false, ...restored };
+});
 
 // Dev: load the Vite dev server. Packaged: load the built renderer over file://
 // Match Vite's explicit IPv4 bind. On Windows, `localhost` may resolve to
