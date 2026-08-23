@@ -1,6 +1,6 @@
 import { API_BASE } from "@/lib/sync/sync";
 import type { PosProduct, ProductVariant, WorkshopOrder } from "@/lib/pos/types";
-import { getAccessToken, type AuthSession } from "@/lib/auth";
+import { clearAuthSession, getAccessToken, type AuthSession } from "@/lib/auth";
 
 export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
   stock?: number;
@@ -19,6 +19,10 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       ...(init?.headers ?? {}),
     },
   });
+  if (response.status === 401 && path !== "/api/auth/login" && typeof window !== "undefined") {
+    clearAuthSession();
+    window.dispatchEvent(new CustomEvent("northbike-auth-expired"));
+  }
   if (!response.ok) {
     const detail = await response.text().catch(() => "");
     throw new Error(detail || `HTTP ${response.status}`);

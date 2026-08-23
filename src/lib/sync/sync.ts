@@ -1,6 +1,6 @@
 import type { CompletedSale } from "@/lib/pos/types";
 import { addSyncedIds, getSyncedIds } from "./kv";
-import { getAccessToken } from "@/lib/auth";
+import { clearAuthSession, getAccessToken } from "@/lib/auth";
 
 // Backend base URL. Baked at build time; defaults to the local backend for dev.
 // For the packaged app build with: VITE_API_URL=https://<tu-app>.up.railway.app
@@ -59,6 +59,10 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       },
       body: JSON.stringify({ sales: pending.map(toPayload) }),
     });
+    if (res.status === 401 && typeof window !== "undefined") {
+      clearAuthSession();
+      window.dispatchEvent(new CustomEvent("northbike-auth-expired"));
+    }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = (await res.json()) as { applied: string[]; skipped: string[] };
     // Both `applied` and `skipped` mean the server now has the sale.

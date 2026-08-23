@@ -1,5 +1,5 @@
 import { Navigate, Outlet, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { PosProvider } from "@/context/PosContext";
 import { PosSidebar } from "@/components/pos/PosSidebar";
 import { SyncBar } from "@/components/SyncBar";
@@ -22,6 +22,12 @@ function AuthenticatedPosLayout() {
   const [session, setSession] = useState<AuthSession | null>(() => getAuthSession());
   const { refreshCatalog } = usePos();
   const pathname = useLocation().pathname;
+
+  useEffect(() => {
+    const handleAuthExpired = () => setSession(null);
+    window.addEventListener("northbike-auth-expired", handleAuthExpired);
+    return () => window.removeEventListener("northbike-auth-expired", handleAuthExpired);
+  }, []);
 
   if (!session) {
     return <AuthScreen onLogin={(next) => { setSession(next); void refreshCatalog(); }} />;
