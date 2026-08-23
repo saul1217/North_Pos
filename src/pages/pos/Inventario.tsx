@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import {
   categoryLabels,
+  getAvailableStock,
   getStockStatus,
   movementTypeLabels,
 } from "@/lib/pos/inventory";
@@ -33,6 +34,8 @@ export default function PosInventarioPage() {
   const [adjQty, setAdjQty] = useState("");
   const [adjReason, setAdjReason] = useState("");
   const [adjVariantId, setAdjVariantId] = useState("");
+  const [adjError, setAdjError] = useState("");
+  const [movementFilter, setMovementFilter] = useState("todos");
 
   const filtered = useMemo(() => {
     let list = products;
@@ -54,19 +57,39 @@ export default function PosInventarioPage() {
 
   function submitAdjust() {
     if (!selected) return;
+    const quantity = Number(adjQty);
+    const removesStock = adjType === "salida" || adjType === "dano" || adjType === "perdida";
+    const available = getAvailableStock(selected, adjVariantId || undefined);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setAdjError("Captura una cantidad mayor que cero.");
+      return;
+    }
+    if (removesStock && quantity > available) {
+      setAdjError(`No puedes retirar ${quantity}; solo hay ${available} disponibles.`);
+      return;
+    }
     adjustInventory({
       productId: selected.id,
       variantId: adjVariantId || undefined,
-      quantity: Number(adjQty) || 0,
+      quantity,
       type: adjType,
       reason: adjReason,
     });
     setAdjOpen(false);
     setAdjQty("");
     setAdjReason("");
+    setAdjError("");
   }
 
   const productHistory = selected ? getProductMovements(selected.id) : [];
+  const visibleMovements = movements.filter((movement) => {
+    if (movementFilter !== "todos" && movement.type !== movementFilter) return false;
+    if (!query.trim()) return true;
+    const search = query.trim().toLowerCase();
+    return [movement.productName, movement.variantLabel, movement.reference, movement.user, movement.reason]
+      .filter(Boolean)
+      .some((value) => value!.toLowerCase().includes(search));
+  });
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -107,6 +130,19 @@ export default function PosInventarioPage() {
           >
             Movimientos
           </button>
+          {tab === "movimientos" && (
+            <select
+              aria-label="Filtrar movimientos"
+              value={movementFilter}
+              onChange={(e) => setMovementFilter(e.target.value)}
+              className="h-9 border border-north-border bg-white px-3 text-sm"
+            >
+              <option value="todos">Todos los movimientos</option>
+              {Object.entries(movementTypeLabels).map(([value, label]) => (
+                <option key={value} value={value}>{label}</option>
+              ))}
+            </select>
+          )}
         </div>
         <div className="relative mt-4 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
@@ -189,10 +225,12 @@ export default function PosInventarioPage() {
                   <th className="px-4 py-3">Cant.</th>
                   <th className="px-4 py-3">Antes → Después</th>
                   <th className="px-4 py-3">Ref.</th>
+                  <th className="px-4 py-3">Usuario</th>
+                  <th className="px-4 py-3">Motivo</th>
                 </tr>
               </thead>
               <tbody>
-                {movements.map((m) => (
+                {visibleMovements.map((m) => (
                   <tr key={m.id} className="border-b border-north-border">
                     <td className="px-4 py-3 text-xs text-north-muted">
                       {new Date(m.date).toLocaleString("es-MX")}
@@ -215,6 +253,8 @@ export default function PosInventarioPage() {
                       {m.stockBefore} → {m.stockAfter}
                     </td>
                     <td className="px-4 py-3 font-mono text-xs">{m.reference}</td>
+                    <td className="px-4 py-3 text-xs">{m.user}</td>
+                    <td className="max-w-xs px-4 py-3 text-xs text-north-muted">{m.reason || "—"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -336,6 +376,7 @@ export default function PosInventarioPage() {
               placeholder="Cantidad"
               className="mt-3 h-10 w-full border border-north-border px-2 text-sm"
             />
+            {adjError && <p className="mt-2 text-sm text-red-700" role="alert">{adjError}</p>}
             <input
               value={adjReason}
               onChange={(e) => setAdjReason(e.target.value)}

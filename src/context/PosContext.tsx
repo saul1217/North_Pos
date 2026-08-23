@@ -59,7 +59,7 @@ import {
   updateProduct as updateProductApi,
   type ProductInput,
 } from "@/lib/catalog/api";
-import { getAccessToken } from "@/lib/auth";
+import { getAccessToken, getAuthSession } from "@/lib/auth";
 
 type PosStore = PosPersistedState & {
   currentSale: CurrentSale;
@@ -169,6 +169,7 @@ function recordStockChange(
     stockAfter,
     reference,
     reason,
+    user: getAuthSession()?.user.username,
   });
   const products = updateProductStock(
     store.products,

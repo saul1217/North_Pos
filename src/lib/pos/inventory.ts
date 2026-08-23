@@ -157,11 +157,12 @@ export function createMovement(input: {
   stockAfter: number;
   reference: string;
   reason?: string;
+  user?: string;
 }): InventoryMovement {
   return {
     id: crypto.randomUUID(),
     date: new Date().toISOString(),
-    user: "Admin demo",
+    user: input.user ?? "Usuario local",
     ...input,
   };
 }
