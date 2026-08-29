@@ -3,8 +3,8 @@
 import { Download, FileSpreadsheet } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
-import { formatPosPrice, paymentMethodLabels } from "@/lib/pos/inventory";
-import { downloadSalesXlsx, filterSalesForExport, getSalesExportBounds, type SalesExportPeriod } from "@/lib/pos/salesExport";
+import { formatPosPrice } from "@/lib/pos/inventory";
+import { downloadSalesXlsx, filterMovementsForExport, filterSalesForExport, getSalesExportBounds, type SalesExportPeriod } from "@/lib/pos/salesExport";
 import type { PaymentMethod } from "@/lib/pos/types";
 
 function localDateKey(): string {
@@ -13,7 +13,7 @@ function localDateKey(): string {
 }
 
 export default function PosRespaldoPage() {
-  const { sales } = usePos();
+  const { sales, movements } = usePos();
   const [period, setPeriod] = useState<SalesExportPeriod>("month");
   const [paymentMethod, setPaymentMethod] = useState<"todos" | PaymentMethod>("todos");
   const [startDate, setStartDate] = useState(localDateKey);
@@ -21,6 +21,7 @@ export default function PosRespaldoPage() {
   const [message, setMessage] = useState("");
   const bounds = useMemo(() => getSalesExportBounds({ period, startDate, endDate }), [period, startDate, endDate]);
   const periodSales = useMemo(() => filterSalesForExport(sales, bounds), [sales, bounds]);
+  const filteredMovements = useMemo(() => filterMovementsForExport(movements, bounds), [movements, bounds]);
   const filteredSales = useMemo(() => paymentMethod === "todos" ? periodSales : periodSales.filter((sale) => sale.payments.some((payment) => payment.method === paymentMethod)), [periodSales, paymentMethod]);
   const grossTotal = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const netTotal = filteredSales.reduce((sum, sale) => sum + (sale.status === "completada" || sale.status === "parcialmente_devuelta" ? sale.total - sale.returns.reduce((returnSum, record) => returnSum + record.items.reduce((itemSum, item) => itemSum + item.unitPrice * item.quantity, 0), 0) : 0), 0);
@@ -30,8 +31,8 @@ export default function PosRespaldoPage() {
       setMessage("La fecha inicial no puede ser posterior a la fecha final.");
       return;
     }
-    downloadSalesXlsx(filteredSales, bounds);
-    setMessage(`Archivo generado con ${filteredSales.length} venta${filteredSales.length === 1 ? "" : "s"}.`);
+    downloadSalesXlsx(filteredSales, bounds, filteredMovements);
+    setMessage(`Archivo generado con ${filteredSales.length} venta${filteredSales.length === 1 ? "" : "s"} y ${filteredMovements.length} movimiento${filteredMovements.length === 1 ? "" : "s"}.`);
   }
 
   return (
@@ -54,7 +55,7 @@ export default function PosRespaldoPage() {
             {period === "range" && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Desde<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label><label className="text-sm font-medium">Hasta<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label></div>}
             <div className="mt-5 border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">Se exportan las ventas guardadas en esta computadora. Las cancelaciones aparecen para mantener el historial y el total neto excluye ventas canceladas y devoluciones.</div>
           </section>
-          <aside className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1"><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Periodo</p><p className="mt-1 text-sm font-medium">{bounds.label}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Ventas</p><p className="mt-1 text-2xl font-semibold">{filteredSales.length}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Total neto</p><p className="mt-1 text-2xl font-semibold text-north-primary">{formatPosPrice(netTotal)}</p><p className="mt-1 text-xs text-north-muted">Bruto registrado: {formatPosPrice(grossTotal)}</p></div></aside>
+          <aside className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1"><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Periodo</p><p className="mt-1 text-sm font-medium">{bounds.label}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Ventas</p><p className="mt-1 text-2xl font-semibold">{filteredSales.length}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Movimientos</p><p className="mt-1 text-2xl font-semibold">{filteredMovements.length}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Total neto</p><p className="mt-1 text-2xl font-semibold text-north-primary">{formatPosPrice(netTotal)}</p><p className="mt-1 text-xs text-north-muted">Bruto registrado: {formatPosPrice(grossTotal)}</p></div></aside>
         </div>
         {message && <p role="status" className="mt-5 max-w-5xl border border-north-border bg-white px-4 py-3 text-sm text-north-muted">{message}</p>}
       </main>

@@ -1,6 +1,6 @@
-import { paymentMethodLabels, saleStatusLabels } from "@/lib/pos/inventory";
 import { saleNetTotal } from "@/lib/pos/analytics";
-import type { CompletedSale } from "@/lib/pos/types";
+import { movementTypeLabels, paymentMethodLabels, saleStatusLabels } from "@/lib/pos/inventory";
+import type { CompletedSale, InventoryMovement } from "@/lib/pos/types";
 
 export type SalesExportPeriod = "day" | "month" | "year" | "range";
 export type SalesExportFilter = { period: SalesExportPeriod; startDate?: string; endDate?: string };
@@ -48,6 +48,13 @@ export function filterSalesForExport(sales: CompletedSale[], bounds: SalesExport
   });
 }
 
+export function filterMovementsForExport(movements: InventoryMovement[], bounds: SalesExportBounds): InventoryMovement[] {
+  return movements.filter((movement) => {
+    const time = new Date(movement.date).getTime();
+    return time >= bounds.start.getTime() && time <= bounds.end.getTime();
+  });
+}
+
 function xmlEscape(value: string): string {
   return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 }
@@ -65,6 +72,7 @@ function columnName(index: number): string {
 
 type Cell = string | number;
 const EXPORT_COLUMN_COUNT = 18;
+const MOVEMENT_COLUMN_COUNT = 11;
 
 function sharedStringTable(rows: Cell[][]): { values: string[]; indexes: Map<string, number> } {
   const values: string[] = [];
@@ -77,36 +85,46 @@ function sharedStringTable(rows: Cell[][]): { values: string[]; indexes: Map<str
   return { values, indexes };
 }
 
-function buildSheet(rows: Cell[][], shared: Map<string, number>): string {
-  const lastColumn = columnName(EXPORT_COLUMN_COUNT - 1);
-  const widths = [13, 11, 13, 17, 28, 20, 20, 10, 15, 15, 15, 13, 15, 15, 15, 17, 13, 15];
-  const columns = widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("");
+type SheetConfig = {
+  columnCount: number;
+  widths: number[];
+  currencyColumns?: number[];
+  quantityColumns?: number[];
+};
+
+function buildSheet(rows: Cell[][], shared: Map<string, number>, config: SheetConfig): string {
+  const lastColumn = columnName(config.columnCount - 1);
+  const columns = config.widths.map((width, index) => `<col min="${index + 1}" max="${index + 1}" width="${width}" customWidth="1"/>`).join("");
+  const currencyColumns = config.currencyColumns ?? [];
+  const quantityColumns = config.quantityColumns ?? [];
   const sheetRows = rows.map((row, rowIndex) => {
     const cells = row.map((cell, columnIndex) => {
       const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-      const style = rowIndex === 0 ? 1 : rowIndex === 5 ? 2 : rowIndex === 3 && columnIndex === 3 ? 3 : [8, 9, 10, 11, 12, 13, 14, 15, 16, 17].includes(columnIndex) ? 3 : columnIndex === 7 ? 4 : 0;
+      const style = rowIndex === 0 ? 1 : rowIndex === 5 ? 2 : rowIndex === 3 && [0, 2].includes(columnIndex) ? 1 : rowIndex === 3 && [1, 3].includes(columnIndex) ? (currencyColumns.includes(columnIndex) ? 3 : 0) : currencyColumns.includes(columnIndex) ? 3 : quantityColumns.includes(columnIndex) ? 4 : 0;
       if (typeof cell === "number") return `<c r="${ref}" s="${style}"><v>${cell}</v></c>`;
       return `<c r="${ref}" s="${style}" t="s"><v>${shared.get(cell) ?? 0}</v></c>`;
     }).join("");
-    return `<row r="${rowIndex + 1}">${cells}</row>`;
+    const height = rowIndex === 0 ? ` ht="25" customHeight="1"` : rowIndex === 5 ? ` ht="34" customHeight="1"` : "";
+    return `<row r="${rowIndex + 1}"${height}>${cells}</row>`;
   }).join("");
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><dimension ref="A1:${lastColumn}${rows.length}"/><sheetViews><sheetView workbookViewId="0"><pane ySplit="6" topLeftCell="A7" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><cols>${columns}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A6:${lastColumn}${rows.length}"/><mergeCells count="3"><mergeCell ref="A1:R1"/><mergeCell ref="A2:R2"/><mergeCell ref="A3:R3"/></mergeCells></worksheet>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetPr><outlinePr summaryBelow="1" summaryRight="1"/><pageSetUpPr fitToPage="1"/></sheetPr><dimension ref="A1:${lastColumn}${rows.length}"/><sheetViews><sheetView showGridLines="1" workbookViewId="0"><pane ySplit="6" topLeftCell="A7" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews><sheetFormatPr defaultRowHeight="19"/><cols>${columns}</cols><sheetData>${sheetRows}</sheetData><autoFilter ref="A6:${lastColumn}${rows.length}"/><mergeCells count="3"><mergeCell ref="A1:${lastColumn}1"/><mergeCell ref="A2:${lastColumn}2"/><mergeCell ref="A3:${lastColumn}3"/></mergeCells></worksheet>`;
 }
 
 function buildStyles(): string {
   return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF20566A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFD9E2E7"/></bottom><diagonal/></border></borders><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"><alignment horizontal="left"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1"><alignment horizontal="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf><xf numFmtId="1" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf></cellXfs></styleSheet>`;
 }
 
-function buildWorkbook(rows: Cell[][]): Uint8Array {
+function buildWorkbook(salesRows: Cell[][], movementRows: Cell[][]): Uint8Array {
   const encoder = new TextEncoder();
-  const { values, indexes } = sharedStringTable(rows);
+  const { values, indexes } = sharedStringTable([...salesRows, ...movementRows]);
   const sharedStrings = `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${values.length}" uniqueCount="${values.length}">${values.map((value) => `<si><t xml:space="preserve">${xmlEscape(value)}</t></si>`).join("")}</sst>`;
   const files: Array<[string, string]> = [
-    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`],
+    ["[Content_Types].xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types"><Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/><Default Extension="xml" ContentType="application/xml"/><Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/><Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/><Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/><Override PartName="/xl/sharedStrings.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sharedStrings+xml"/></Types>`],
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
-    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ventas" sheetId="1" r:id="rId1"/></sheets></workbook>`],
-    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/></Relationships>`],
-    ["xl/worksheets/sheet1.xml", buildSheet(rows, indexes)],
+    ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ventas" sheetId="1" r:id="rId1"/><sheet name="Movimientos de inventario" sheetId="2" r:id="rId4"/></sheets></workbook>`],
+    ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`],
+    ["xl/worksheets/sheet1.xml", buildSheet(salesRows, indexes, { columnCount: EXPORT_COLUMN_COUNT, widths: [13, 11, 13, 17, 28, 20, 20, 10, 15, 15, 15, 13, 15, 15, 15, 17, 13, 15], currencyColumns: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17], quantityColumns: [7] })],
+    ["xl/worksheets/sheet2.xml", buildSheet(movementRows, indexes, { columnCount: MOVEMENT_COLUMN_COUNT, widths: [13, 11, 28, 20, 22, 12, 13, 13, 18, 18, 28], quantityColumns: [5, 6, 7] })],
     ["xl/styles.xml", buildStyles()],
     ["xl/sharedStrings.xml", sharedStrings],
   ];
@@ -165,8 +183,29 @@ function exportRows(sales: CompletedSale[], bounds: SalesExportBounds): Cell[][]
   return rows;
 }
 
-export function downloadSalesXlsx(sales: CompletedSale[], bounds: SalesExportBounds): void {
-  const bytes = buildWorkbook(exportRows(sales, bounds));
+function movementRows(movements: InventoryMovement[], bounds: SalesExportBounds): Cell[][] {
+  const headers = ["Fecha", "Hora", "Producto", "Variante", "Movimiento", "Cantidad", "Stock antes", "Stock después", "Referencia", "Usuario", "Motivo"];
+  const rows: Cell[][] = [
+    ["North Bike POS"],
+    [`Movimientos de inventario · ${bounds.label}`],
+    [`Generado: ${new Date().toLocaleString("es-MX")}`],
+    ["Movimientos incluidos", movements.length],
+    [],
+    headers,
+  ];
+  movements.forEach((movement) => {
+    const date = new Date(movement.date);
+    rows.push([
+      date.toLocaleDateString("es-MX"), date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }), movement.productName,
+      movement.variantLabel ?? "", movementTypeLabels[movement.type] ?? movement.type, movement.quantity, movement.stockBefore, movement.stockAfter,
+      movement.reference, movement.user, movement.reason ?? "",
+    ]);
+  });
+  return rows;
+}
+
+export function downloadSalesXlsx(sales: CompletedSale[], bounds: SalesExportBounds, movements: InventoryMovement[]): void {
+  const bytes = buildWorkbook(exportRows(sales, bounds), movementRows(movements, bounds));
   const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
