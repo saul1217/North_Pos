@@ -3,6 +3,7 @@ import type {
   InventoryMovement,
   Layaway,
   PosPersistedState,
+  PosProduct,
   Quotation,
   WorkshopOrder,
   WorkshopSyncOperation,
@@ -50,6 +51,20 @@ function writeRawState(raw: string): void {
   localStorage.setItem(POS_STATE_KEY, raw);
 }
 
+function normalizeProductIdentifiers(product: PosProduct): PosProduct {
+  const legacyUpc = product.upc ?? (product.barcode && product.barcode !== product.sku ? product.barcode : "");
+  return {
+    ...product,
+    upc: legacyUpc,
+    barcode: product.sku,
+    variants: product.variants.map((variant) => ({
+      ...variant,
+      upc: variant.upc ?? (variant.barcode && variant.barcode !== variant.sku ? variant.barcode : ""),
+      barcode: variant.sku,
+    })),
+  };
+}
+
 export function loadPosState(): PosPersistedState {
   if (typeof window === "undefined") return getDefaultState();
   try {
@@ -59,7 +74,7 @@ export function loadPosState(): PosPersistedState {
     return {
       ...getDefaultState(),
       ...parsed,
-      products: parsed.products ?? [],
+      products: (parsed.products ?? []).map(normalizeProductIdentifiers),
       workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
     };
   } catch {

@@ -159,12 +159,14 @@ export function SaleScreen() {
       (p) =>
         p.status === "activo" &&
         (p.name.toLowerCase().includes(q) ||
-          p.sku.toLowerCase().includes(q) ||
-          p.barcode.includes(q) ||
+        p.sku.toLowerCase().includes(q) ||
+        (p.upc ?? "").toLowerCase().includes(q) ||
+        p.barcode.includes(q) ||
           categoryLabels[p.category]?.toLowerCase().includes(q) ||
           p.variants.some(
             (v) =>
               v.sku.toLowerCase().includes(q) ||
+              (v.upc ?? "").toLowerCase().includes(q) ||
               v.barcode.includes(q) ||
               v.label.toLowerCase().includes(q),
           )),

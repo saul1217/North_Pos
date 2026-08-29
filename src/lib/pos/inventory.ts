@@ -94,9 +94,9 @@ export function findByBarcode(
   if (!q) return null;
 
   for (const product of products) {
-    if (product.barcode === q) return { product };
+    if (product.barcode === q || product.upc === q) return { product };
     for (const variant of product.variants) {
-      if (variant.barcode === q || variant.sku === q) {
+      if (variant.barcode === q || variant.upc === q || variant.sku === q) {
         return { product, variant };
       }
     }

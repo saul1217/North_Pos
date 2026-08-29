@@ -48,7 +48,8 @@ export default function PosInventarioPage() {
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
-        p.barcode.includes(q),
+        (p.upc ?? "").toLowerCase().includes(q) ||
+        p.barcode.toLowerCase().includes(q),
     );
   }, [products, query, lowOnly]);
 

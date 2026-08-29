@@ -20,6 +20,7 @@ export type LineDiscount = {
 export type ProductVariant = {
   id: string;
   sku: string;
+  upc?: string;
   barcode: string;
   label: string;
   size?: string;
@@ -48,6 +49,7 @@ export type PosProduct = {
   price: number;
   stock: number;
   minStock: number;
+  upc?: string;
   image: string;
   images?: string[];
   barcode: string;
