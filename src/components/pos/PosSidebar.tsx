@@ -16,6 +16,7 @@ import {
   LogOut,
   Users,
   HardDrive,
+  Printer,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth";
 import { allowedPaths } from "@/lib/permissions";
@@ -55,7 +56,7 @@ export function PosSidebar({ onLogout, username, role }: { onLogout: () => void;
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {[...nav, ...(role === "admin" ? [{ href: "/pos/usuarios", label: "Usuarios", icon: Users }, { href: "/pos/respaldo", label: "Respaldo", icon: HardDrive }] : [])].filter(({ href }) => allowedPaths(role).some((path) => path === "/pos/" || path === href)).map(({ href, label, icon: Icon }) => {
+        {[...nav, { href: "/pos/codigos-barras", label: "Códigos de barras", icon: Printer }, ...(role === "admin" ? [{ href: "/pos/usuarios", label: "Usuarios", icon: Users }, { href: "/pos/respaldo", label: "Respaldo", icon: HardDrive }] : [])].filter(({ href }) => allowedPaths(role).some((path) => path === "/pos/" || path === href)).map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link

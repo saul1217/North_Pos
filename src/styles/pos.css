@@ -9,7 +9,9 @@
   }
 
   .pos-ticket-print,
-  .pos-ticket-print * {
+  .pos-ticket-print *,
+  .pos-barcode-print,
+  .pos-barcode-print * {
     visibility: visible;
   }
 
@@ -26,4 +28,30 @@
   .pos-no-print {
     display: none !important;
   }
+
+  .pos-barcode-print {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    display: grid !important;
+    grid-template-columns: repeat(auto-fill, minmax(58mm, 1fr));
+    gap: 4mm;
+    padding: 4mm;
+    background: white !important;
+    color: black !important;
+  }
+
+  .pos-barcode-label {
+    width: 58mm;
+    min-height: 30mm;
+    break-inside: avoid;
+    border: 0.3mm solid black;
+    padding: 2mm;
+  }
+}
+
+.pos-barcode-label {
+  border: 1px solid #d6e0e5;
+  padding: 10px;
 }
