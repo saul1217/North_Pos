@@ -1,69 +1,63 @@
 "use client";
 
-import { Download, HardDrive, Upload } from "lucide-react";
-import { useState } from "react";
+import { Download, FileSpreadsheet } from "lucide-react";
+import { useMemo, useState } from "react";
+import { usePos } from "@/context/PosContext";
+import { formatPosPrice, paymentMethodLabels } from "@/lib/pos/inventory";
+import { downloadSalesXlsx, filterSalesForExport, getSalesExportBounds, type SalesExportPeriod } from "@/lib/pos/salesExport";
+import type { PaymentMethod } from "@/lib/pos/types";
+
+function localDateKey(): string {
+  const now = new Date();
+  return [now.getFullYear(), String(now.getMonth() + 1).padStart(2, "0"), String(now.getDate()).padStart(2, "0")].join("-");
+}
 
 export default function PosRespaldoPage() {
-  const [busy, setBusy] = useState(false);
+  const { sales } = usePos();
+  const [period, setPeriod] = useState<SalesExportPeriod>("month");
+  const [paymentMethod, setPaymentMethod] = useState<"todos" | PaymentMethod>("todos");
+  const [startDate, setStartDate] = useState(localDateKey);
+  const [endDate, setEndDate] = useState(localDateKey);
   const [message, setMessage] = useState("");
-  const isElectron = typeof window !== "undefined" && Boolean(window.pos?.isElectron);
+  const bounds = useMemo(() => getSalesExportBounds({ period, startDate, endDate }), [period, startDate, endDate]);
+  const periodSales = useMemo(() => filterSalesForExport(sales, bounds), [sales, bounds]);
+  const filteredSales = useMemo(() => paymentMethod === "todos" ? periodSales : periodSales.filter((sale) => sale.payments.some((payment) => payment.method === paymentMethod)), [periodSales, paymentMethod]);
+  const grossTotal = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
+  const netTotal = filteredSales.reduce((sum, sale) => sum + (sale.status === "completada" || sale.status === "parcialmente_devuelta" ? sale.total - sale.returns.reduce((returnSum, record) => returnSum + record.items.reduce((itemSum, item) => itemSum + item.unitPrice * item.quantity, 0), 0) : 0), 0);
 
-  async function exportBackup() {
-    if (!window.pos) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await window.pos.exportBackup();
-      if (!result.canceled) setMessage("Respaldo exportado correctamente.");
-    } catch (error) {
-      setMessage(`No se pudo exportar: ${(error as Error).message}`);
-    } finally {
-      setBusy(false);
+  function generateReport() {
+    if (period === "range" && startDate > endDate) {
+      setMessage("La fecha inicial no puede ser posterior a la fecha final.");
+      return;
     }
-  }
-
-  async function importBackup() {
-    if (!window.pos) return;
-    if (!window.confirm("La restauración reemplazará los datos locales de esta PC. ¿Deseas continuar?")) return;
-    setBusy(true);
-    setMessage("");
-    try {
-      const result = await window.pos.importBackup();
-      if (!result.canceled) {
-        setMessage("Respaldo restaurado. La aplicación se recargará.");
-        window.setTimeout(() => window.location.reload(), 900);
-      }
-    } catch (error) {
-      setMessage(`No se pudo restaurar: ${(error as Error).message}`);
-    } finally {
-      setBusy(false);
-    }
+    downloadSalesXlsx(filteredSales, bounds);
+    setMessage(`Archivo generado con ${filteredSales.length} venta${filteredSales.length === 1 ? "" : "s"}.`);
   }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="border-b border-north-border bg-white px-4 py-5 md:px-6">
-        <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">Respaldo local</h1>
-        <p className="mt-1 text-sm text-north-muted">Protege la información guardada en esta computadora.</p>
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">Exportar ventas</h1>
+            <p className="mt-1 text-sm text-north-muted">Genera un archivo Excel para revisar o compartir tus ventas.</p>
+          </div>
+          <button type="button" onClick={generateReport} className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"><Download className="h-4 w-4" />Generar Excel</button>
+        </div>
       </header>
-      <div className="max-w-2xl space-y-5 p-4 md:p-6">
-        {!isElectron && <p className="border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">Los respaldos están disponibles en la aplicación de escritorio.</p>}
-        <section className="border border-north-border bg-white p-5">
-          <div className="flex items-start gap-3">
-            <HardDrive className="mt-1 h-5 w-5 text-north-primary" />
-            <div>
-              <h2 className="font-semibold">Datos locales del POS</h2>
-              <p className="mt-1 text-sm text-north-muted">Incluye ventas, productos locales, movimientos, órdenes y pendientes de sincronización.</p>
-            </div>
-          </div>
-          <div className="mt-5 flex flex-wrap gap-3">
-            <button type="button" disabled={!isElectron || busy} onClick={() => void exportBackup()} className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white disabled:opacity-50"><Download className="h-4 w-4" />Exportar respaldo</button>
-            <button type="button" disabled={!isElectron || busy} onClick={() => void importBackup()} className="inline-flex h-10 items-center gap-2 border border-north-border px-4 text-sm font-semibold disabled:opacity-50"><Upload className="h-4 w-4" />Restaurar respaldo</button>
-          </div>
-          <p className="mt-4 text-xs text-north-muted">Antes de restaurar se crea automáticamente una copia de seguridad de los datos actuales.</p>
-        </section>
-        {message && <p className="border border-north-border bg-white px-4 py-3 text-sm text-north-muted">{message}</p>}
-      </div>
+      <main className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+        <div className="grid max-w-5xl gap-6 lg:grid-cols-[minmax(0,1fr)_280px]">
+          <section className="border border-north-border bg-white p-5">
+            <div className="flex items-start gap-3"><FileSpreadsheet className="mt-0.5 h-5 w-5 text-north-primary" /><div><h2 className="font-semibold">Periodo del reporte</h2><p className="mt-1 text-sm text-north-muted">Incluye el detalle de cada producto vendido, pagos, descuentos y devoluciones.</p></div></div>
+            <label className="mt-5 block text-sm font-medium">Filtrar por<select value={period} onChange={(event) => setPeriod(event.target.value as SalesExportPeriod)} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="day">Hoy</option><option value="month">Mes actual</option><option value="year">Año actual</option><option value="range">Rango personalizado</option></select></label>
+            <label className="mt-4 block text-sm font-medium">Forma de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "todos" | PaymentMethod)} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="todos">Todos los métodos</option><option value="efectivo">Solo efectivo</option><option value="tarjeta">Solo tarjeta</option><option value="transferencia">Solo transferencia</option></select></label>
+            {period === "range" && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Desde<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label><label className="text-sm font-medium">Hasta<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label></div>}
+            <div className="mt-5 border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">Se exportan las ventas guardadas en esta computadora. Las cancelaciones aparecen para mantener el historial y el total neto excluye ventas canceladas y devoluciones.</div>
+          </section>
+          <aside className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1"><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Periodo</p><p className="mt-1 text-sm font-medium">{bounds.label}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Ventas</p><p className="mt-1 text-2xl font-semibold">{filteredSales.length}</p></div><div className="border border-north-border bg-white p-4"><p className="text-xs uppercase text-north-steel">Total neto</p><p className="mt-1 text-2xl font-semibold text-north-primary">{formatPosPrice(netTotal)}</p><p className="mt-1 text-xs text-north-muted">Bruto registrado: {formatPosPrice(grossTotal)}</p></div></aside>
+        </div>
+        {message && <p role="status" className="mt-5 max-w-5xl border border-north-border bg-white px-4 py-3 text-sm text-north-muted">{message}</p>}
+      </main>
     </div>
   );
 }
