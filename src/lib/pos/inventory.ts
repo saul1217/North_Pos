@@ -105,6 +105,21 @@ export function findByBarcode(
   return null;
 }
 
+// EAN-13-compatible internal code. Prefix 20 is reserved for in-store codes.
+export function generateInternalBarcode(usedCodes: Iterable<string> = []): string {
+  const used = new Set(usedCodes);
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    const entropy = Math.floor(Math.random() * 10);
+    const base = `20${Date.now().toString().slice(-9)}${entropy}`;
+    const checksum = base
+      .split("")
+      .reduce((sum, digit, index) => sum + Number(digit) * (index % 2 === 0 ? 1 : 3), 0);
+    const code = `${base}${(10 - (checksum % 10)) % 10}`;
+    if (!used.has(code)) return code;
+  }
+  return `20${Date.now().toString().slice(-9)}00`;
+}
+
 export function updateProductStock(
   products: PosProduct[],
   productId: string,

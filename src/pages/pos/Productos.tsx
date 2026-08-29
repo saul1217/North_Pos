@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Eye, Pencil, Plus, RefreshCw, Search, Upload, X } from "lucide-react";
 import { Fragment, useMemo, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
-import { categoryLabels, formatPosPrice } from "@/lib/pos/inventory";
+import { categoryLabels, formatPosPrice, generateInternalBarcode } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput } from "@/lib/catalog/api";
 import { uploadProductImage } from "@/lib/catalog/api";
@@ -17,7 +17,6 @@ type ProductForm = {
   stock: string;
   minStock: string;
   barcode: string;
-  location: string;
   image: string;
   images: string[];
   status: PosProduct["status"];
@@ -34,7 +33,6 @@ const emptyForm: ProductForm = {
   stock: "0",
   minStock: "0",
   barcode: "",
-  location: "",
   image: "",
   images: [],
   status: "activo",
@@ -52,7 +50,6 @@ function formFromProduct(product: PosProduct): ProductForm {
     stock: String(product.stock),
     minStock: String(product.minStock),
     barcode: product.barcode,
-    location: product.location,
     image: product.image,
     images: product.images ?? [],
     status: product.status,
@@ -149,7 +146,6 @@ export default function PosProductosPage() {
       stock: Number(form.stock) || 0,
       minStock: Number(form.minStock) || 0,
       barcode: form.barcode.trim(),
-      location: form.location.trim(),
       image: imageUrl,
       images: [...form.images, ...uploadedGallery.map((image) => image.url)],
       status: form.status,
@@ -226,7 +222,6 @@ export default function PosProductosPage() {
                 <th className="px-4 py-3">Código</th>
                 <th className="px-4 py-3">Precio</th>
                 <th className="px-4 py-3">Stock</th>
-                <th className="px-4 py-3">Ubicación</th>
                 <th className="px-4 py-3">Estado</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
@@ -275,7 +270,6 @@ export default function PosProductosPage() {
                       </td>
                       <td className="px-4 py-3">{formatPosPrice(product.price)}</td>
                       <td className="px-4 py-3">{product.stock}</td>
-                      <td className="px-4 py-3 text-xs">{product.location}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-0.5 text-[11px] font-semibold uppercase ${
@@ -300,7 +294,7 @@ export default function PosProductosPage() {
                     </tr>
                     {isOpen && (
                       <tr key={`${product.id}-detail`}>
-                        <td colSpan={8} className="bg-north-background px-6 py-4">
+                          <td colSpan={7} className="bg-north-background px-6 py-4">
                           {product.variants.length > 0 && (
                             <div className="mb-4">
                               <p className="mb-2 text-xs font-semibold uppercase text-north-steel">
@@ -316,8 +310,7 @@ export default function PosProductosPage() {
                                     <p>SKU: {v.sku}</p>
                                     <p>Código: {v.barcode}</p>
                                     <p>
-                                      Stock: {v.stock} · Mín: {v.minStock} ·{" "}
-                                      {v.location}
+                                      Stock: {v.stock} · Mín: {v.minStock}
                                     </p>
                                   </div>
                                 ))}
@@ -376,8 +369,7 @@ export default function PosProductosPage() {
               <label className="text-sm font-medium">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock<input min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock mínimo<input min="0" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
-              <label className="text-sm font-medium">Código de barras<input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
-              <label className="text-sm font-medium">Ubicación<input value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
+              <label className="text-sm font-medium">Código de barras interno<div className="mt-1 flex gap-2"><input value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} className="h-10 min-w-0 flex-1 border border-north-border px-3 font-normal" /><button type="button" onClick={() => setForm({ ...form, barcode: generateInternalBarcode(products.flatMap((product) => [product.barcode, ...product.variants.map((variant) => variant.barcode), ...form.variants.map((variant) => variant.barcode)])) })} className="flex h-10 shrink-0 items-center gap-1 border border-north-border px-3 text-xs font-semibold" title="Generar código interno"><RefreshCw className="h-3.5 w-3.5" />Generar</button></div><span className="mt-1 block text-xs font-normal text-north-muted">Código numérico para etiquetas y lector.</span></label>
               <label className="text-sm font-medium">Estado<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProductForm["status"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></label>
               <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={form.requiresSerial} onChange={(e) => setForm({ ...form, requiresSerial: e.target.checked })} /> Requiere número de serie</label>
               <div className="md:col-span-2">
@@ -399,11 +391,11 @@ export default function PosProductosPage() {
             </div>
             <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Variantes</h3><p className="text-xs text-north-muted">Talla, rueda, color o modelo con stock propio.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar variante</button></div>
-              <div className="mt-3 space-y-3">{form.variants.map((variant, index) => <div key={variant.id} className="grid gap-2 border border-north-border bg-north-background p-3 md:grid-cols-4"><input aria-label="Etiqueta de variante" placeholder="Etiqueta (Talla M / Negro)" value={variant.label} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, label: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="SKU de variante" placeholder="SKU" value={variant.sku} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, sku: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Código de barras de variante" placeholder="Código de barras" value={variant.barcode} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, barcode: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Talla" placeholder="Talla" value={variant.size ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, size: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Rueda" placeholder="Rueda (29)" value={variant.wheelSize ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, wheelSize: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Color" placeholder="Color" value={variant.color ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, color: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Precio de variante" type="number" min="0" placeholder="Precio" value={variant.price} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, price: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Stock de variante" type="number" min="0" placeholder="Stock" value={variant.stock} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, stock: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, i) => i !== index) })} className="h-9 text-left text-xs text-red-700">Eliminar variante</button></div>)}</div>
+              <div className="mt-3 space-y-3">{form.variants.map((variant, index) => <div key={variant.id} className="grid gap-2 border border-north-border bg-north-background p-3 md:grid-cols-4"><input aria-label="Etiqueta de variante" placeholder="Etiqueta (Talla M / Negro)" value={variant.label} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, label: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="SKU de variante" placeholder="SKU" value={variant.sku} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, sku: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><div className="flex gap-1"><input aria-label="Código de barras de variante" placeholder="Código interno" value={variant.barcode} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, barcode: e.target.value } : v) })} className="h-9 min-w-0 flex-1 border border-north-border bg-white px-2 text-xs" /><button type="button" aria-label={`Generar código para ${variant.label || "variante"}`} onClick={() => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, barcode: generateInternalBarcode(products.flatMap((product) => [product.barcode, ...product.variants.map((item) => item.barcode), ...form.variants.map((item) => item.barcode)])) } : v) })} className="h-9 border border-north-border px-2 text-xs" title="Generar código interno"><RefreshCw className="h-3.5 w-3.5" /></button></div><input aria-label="Talla" placeholder="Talla" value={variant.size ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, size: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Rueda" placeholder="Rueda (29)" value={variant.wheelSize ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, wheelSize: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Color" placeholder="Color" value={variant.color ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, color: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Precio de variante" type="number" min="0" placeholder="Precio" value={variant.price} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, price: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Stock de variante" type="number" min="0" placeholder="Stock" value={variant.stock} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, stock: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, i) => i !== index) })} className="h-9 text-left text-xs text-red-700">Eliminar variante</button></div>)}</div>
             </section>
             <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Números de serie</h3><p className="text-xs text-north-muted">Registra cada bicicleta individual.</p></div><button type="button" onClick={addSerialUnit} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar serie</button></div>
-              <div className="mt-3 space-y-2">{form.serialUnits.map((unit, index) => <div key={unit.id} className="grid gap-2 md:grid-cols-[1fr_180px_120px_auto]"><input aria-label="Número de serie" placeholder="Número de serie" value={unit.serialNumber} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, serialNumber: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><select aria-label="Variante de serie" value={unit.variantId ?? ""} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, variantId: e.target.value || undefined } : s) })} className="h-9 border border-north-border bg-white px-2 text-xs"><option value="">Producto base</option>{form.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label || "Variante sin etiqueta"}</option>)}</select><input aria-label="Ubicación de serie" placeholder="Ubicación" value={unit.location} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, location: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, serialUnits: form.serialUnits.filter((_, i) => i !== index) })} className="h-9 text-xs text-red-700">Eliminar</button></div>)}</div>
+              <div className="mt-3 space-y-2">{form.serialUnits.map((unit, index) => <div key={unit.id} className="grid gap-2 md:grid-cols-[1fr_180px_auto]"><input aria-label="Número de serie" placeholder="Número de serie" value={unit.serialNumber} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, serialNumber: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><select aria-label="Variante de serie" value={unit.variantId ?? ""} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, variantId: e.target.value || undefined } : s) })} className="h-9 border border-north-border bg-white px-2 text-xs"><option value="">Producto base</option>{form.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label || "Variante sin etiqueta"}</option>)}</select><button type="button" onClick={() => setForm({ ...form, serialUnits: form.serialUnits.filter((_, i) => i !== index) })} className="h-9 text-xs text-red-700">Eliminar</button></div>)}</div>
             </section>
             {formError && <p className="mx-5 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
             <div className="flex justify-end gap-2 border-t border-north-border px-5 py-4">

@@ -2,10 +2,10 @@ import { API_BASE } from "@/lib/sync/sync";
 import type { PosProduct, ProductVariant, WorkshopOrder } from "@/lib/pos/types";
 import { clearAuthSession, getAccessToken, type AuthSession } from "@/lib/auth";
 
-export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock"> & {
+export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "location"> & {
   stock?: number;
-  variants?: Array<Omit<ProductVariant, "id"> & { id?: string }>;
-  serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id"> & { id?: string }>;
+  variants?: Array<Omit<ProductVariant, "id" | "location"> & { id?: string; location?: string }>;
+  serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id" | "location"> & { id?: string; location?: string }>;
 };
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

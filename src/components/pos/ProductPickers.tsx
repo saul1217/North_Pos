@@ -30,7 +30,7 @@ export function VariantPickerModal({
             >
               <span className="text-sm font-medium">{v.label}</span>
               <span className="text-xs text-north-muted">
-                Stock: {v.stock} · {v.location}
+                Stock: {v.stock}
               </span>
             </button>
           ))}
@@ -75,7 +75,6 @@ export function SerialPickerModal({
                 className="flex w-full items-center justify-between border border-north-border px-3 py-3 text-left hover:border-north-primary"
               >
                 <span className="font-mono text-sm">{u.serialNumber}</span>
-                <span className="text-xs text-north-muted">{u.location}</span>
               </button>
             ))
           )}

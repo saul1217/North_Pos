@@ -167,7 +167,6 @@ export default function PosInventarioPage() {
                   <th className="px-4 py-3">Código</th>
                   <th className="px-4 py-3">Stock</th>
                   <th className="px-4 py-3">Mín.</th>
-                  <th className="px-4 py-3">Ubicación</th>
                   <th className="px-4 py-3">Estado</th>
                 </tr>
               </thead>
@@ -192,7 +191,6 @@ export default function PosInventarioPage() {
                       <td className="px-4 py-3 font-mono text-xs">{p.barcode}</td>
                       <td className="px-4 py-3 font-semibold">{p.stock}</td>
                       <td className="px-4 py-3">{p.minStock}</td>
-                      <td className="px-4 py-3 text-xs">{p.location}</td>
                       <td className="px-4 py-3">
                         <span
                           className={`px-2 py-0.5 text-[11px] font-semibold uppercase ${
@@ -279,7 +277,6 @@ export default function PosInventarioPage() {
                   >
                     <p className="font-medium">{v.label}</p>
                     <p>SKU: {v.sku} · Stock: {v.stock}</p>
-                    <p>Ubicación: {v.location}</p>
                   </div>
                 ))}
               </div>
