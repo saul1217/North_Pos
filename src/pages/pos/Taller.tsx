@@ -557,11 +557,14 @@ export default function PosTallerPage() {
 
                 {!isCashier && !isClosed && selected.status !== "recibida" && !(selected.status === "terminada" && selected.paymentStatus === "pagada") && <select
                   value={selected.status}
-                  onChange={(e) =>
-                    updateWorkshopOrder(selected.id, {
-                      status: e.target.value as WorkshopStatus,
-                    })
-                  }
+                  onChange={(e) => {
+                    const nextStatus = e.target.value as WorkshopStatus;
+                    updateWorkshopOrder(selected.id, { status: nextStatus });
+                    setSelected({ ...selected, status: nextStatus });
+                    setSaveMessage(nextStatus === "terminada" && selected.paymentStatus !== "pagada"
+                      ? "Trabajo terminado. Espera a que se registre el pago para confirmar la entrega."
+                      : "Estado de la orden actualizado.");
+                  }}
                   className="mt-4 h-10 w-full border border-north-border px-2 text-sm"
                 >
                   {statusOptions.map((s) => (
@@ -584,7 +587,7 @@ export default function PosTallerPage() {
 
                 {selected.status === "terminada" && selected.paymentStatus !== "pagada" && (
                   <p className="mt-4 border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-                    Falta confirmar el pago antes de entregar la bicicleta.
+                    Trabajo terminado. Espera a que se registre el pago para confirmar la entrega.
                   </p>
                 )}
 
