@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { Eye, Pencil, Plus, RefreshCw, Search, Upload, X } from "lucide-react";
+import { Eye, Pencil, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { Fragment, useMemo, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice } from "@/lib/pos/inventory";
@@ -70,6 +70,7 @@ export default function PosProductosPage() {
     refreshCatalog,
     createProduct,
     updateProduct,
+    deleteProduct,
   } = usePos();
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -80,6 +81,10 @@ export default function PosProductosPage() {
   const [imageFiles, setImageFiles] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<PosProduct | null>(null);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -137,11 +142,19 @@ export default function PosProductosPage() {
     try {
       let imageUrl = form.image.trim();
       if (imageFile) {
-        imageUrl = (await uploadProductImage(imageFile)).url;
+        try {
+          imageUrl = (await uploadProductImage(imageFile)).url;
+        } catch {
+          // La imagen puede esperar; los datos del producto deben conservarse
+          // localmente incluso cuando el servidor no está disponible.
+        }
       }
-      const uploadedGallery = imageFiles.length > 0
-        ? await Promise.all(imageFiles.map((file) => uploadProductImage(file)))
+      const galleryResults = imageFiles.length > 0
+        ? await Promise.allSettled(imageFiles.map((file) => uploadProductImage(file)))
         : [];
+      const uploadedGallery = galleryResults
+        .filter((result): result is PromiseFulfilledResult<{ bucket: string; path: string; url: string }> => result.status === "fulfilled")
+        .map((result) => result.value);
       const input: ProductInput = {
       sku: form.sku.trim(),
       name: form.name.trim(),
@@ -166,6 +179,22 @@ export default function PosProductosPage() {
       setFormError((error as Error).message || "No se pudo guardar el producto.");
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function confirmDelete() {
+    if (!deleteTarget) return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      const name = deleteTarget.name;
+      await deleteProduct(deleteTarget.id);
+      setDeleteTarget(null);
+      setDeleteMessage(`${name} se eliminó del catálogo y no volverá a sincronizarse.`);
+    } catch (error) {
+      setDeleteError((error as Error).message || "No se pudo eliminar el producto.");
+    } finally {
+      setDeleting(false);
     }
   }
 
@@ -203,6 +232,11 @@ export default function PosProductosPage() {
         {catalogError && (
           <p className="mt-3 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
             Sin conexión al backend. Se muestra el catálogo guardado localmente.
+          </p>
+        )}
+        {deleteMessage && (
+          <p className="mt-3 border border-emerald-300 bg-emerald-50 px-3 py-2 text-xs text-emerald-800" role="status">
+            {deleteMessage}
           </p>
         )}
         <div className="relative mt-4 max-w-md">
@@ -293,6 +327,18 @@ export default function PosProductosPage() {
                           </button>
                           <button type="button" onClick={() => openEdit(product)} className="p-2 text-north-muted" aria-label={`Editar ${product.name}`}>
                             <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDeleteError(null);
+                              setDeleteMessage(null);
+                              setDeleteTarget(product);
+                            }}
+                            className="p-2 text-red-700 hover:bg-red-50"
+                            aria-label={`Eliminar ${product.name}`}
+                          >
+                            <Trash2 className="h-4 w-4" />
                           </button>
                         </div>
                       </td>
@@ -409,6 +455,40 @@ export default function PosProductosPage() {
               <button type="submit" disabled={saving} className="h-10 bg-north-primary px-5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Guardando..." : "Guardar producto"}</button>
             </div>
           </form>
+        </div>
+      )}
+
+      {deleteTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" role="alertdialog" aria-modal="true" aria-labelledby="delete-product-title" aria-describedby="delete-product-description">
+          <div className="w-full max-w-md border border-north-border bg-white shadow-xl">
+            <div className="border-b border-north-border px-5 py-4">
+              <h2 id="delete-product-title" className="font-display text-lg font-bold uppercase tracking-[0.06em]">
+                Eliminar producto
+              </h2>
+            </div>
+            <div className="space-y-3 px-5 py-5">
+              <p id="delete-product-description" className="text-sm text-north-ink">
+                ¿Seguro que deseas eliminar <strong>{deleteTarget.name}</strong>?
+              </p>
+              <p className="text-xs text-north-muted">
+                SKU: {deleteTarget.sku}. Esta es la única acción que lo eliminará tanto del equipo como de la base de datos.
+              </p>
+              {deleteError && (
+                <p className="border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                  {deleteError}
+                </p>
+              )}
+            </div>
+            <div className="flex justify-end gap-2 border-t border-north-border px-5 py-4">
+              <button type="button" onClick={() => setDeleteTarget(null)} disabled={deleting} className="h-10 border border-north-border px-4 text-sm font-semibold disabled:opacity-50">
+                Cancelar
+              </button>
+              <button type="button" onClick={() => void confirmDelete()} disabled={deleting} className="inline-flex h-10 items-center gap-2 bg-red-700 px-4 text-sm font-semibold text-white disabled:opacity-50">
+                <Trash2 className="h-4 w-4" />
+                {deleting ? "Eliminando..." : "Eliminar definitivamente"}
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

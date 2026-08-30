@@ -16,6 +16,7 @@ export const POS_STATE_KEY = "northbike-pos-state-v2";
 export function getDefaultState(): PosPersistedState {
   return {
     products: [],
+    deletedProductIds: [],
     sales: [],
     movements: [],
     layaways: [],
@@ -75,6 +76,7 @@ export function loadPosState(): PosPersistedState {
       ...getDefaultState(),
       ...parsed,
       products: (parsed.products ?? []).map(normalizeProductIdentifiers),
+      deletedProductIds: parsed.deletedProductIds ?? [],
       workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
     };
   } catch {

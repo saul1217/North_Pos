@@ -49,14 +49,14 @@ import {
   savePosState,
 } from "@/lib/pos/storage";
 import {
-  createProduct as createProductApi,
-  fetchProducts,
+  deleteProduct as deleteProductApi,
+  fetchProductSync,
   fetchWorkshopOrders,
   createWorkshopOrder as createWorkshopOrderApi,
   updateWorkshopOrder as updateWorkshopOrderApi,
   updateWorkshopBudget as updateWorkshopBudgetApi,
   payWorkshopOrder as payWorkshopOrderApi,
-  updateProduct as updateProductApi,
+  syncProducts,
   type ProductInput,
 } from "@/lib/catalog/api";
 import { getAccessToken, getAuthSession } from "@/lib/auth";
@@ -119,6 +119,7 @@ function persist(partial: Partial<PosStore>) {
   store = { ...store, ...partial };
   const {
     products,
+    deletedProductIds,
     sales,
     movements,
     layaways,
@@ -132,6 +133,7 @@ function persist(partial: Partial<PosStore>) {
   } = store;
   savePosState({
     products,
+    deletedProductIds,
     sales,
     movements,
     layaways,
@@ -271,6 +273,8 @@ type PosContextValue = {
   refreshCatalog: () => Promise<void>;
   createProduct: (input: ProductInput) => Promise<PosProduct>;
   updateProduct: (id: string, input: ProductInput) => Promise<PosProduct>;
+  deleteProduct: (id: string) => Promise<void>;
+  mergeRemoteSales: (sales: CompletedSale[]) => void;
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
@@ -292,8 +296,21 @@ export function PosProvider({ children }: { children: ReactNode }) {
     setCatalogLoading(true);
     setCatalogError(null);
     try {
-      const products = await fetchProducts();
-      persist({ products });
+      const remote = await fetchProductSync();
+      const deletedIds = [...new Set([...store.deletedProductIds, ...remote.deletedIds])];
+      const products = mergeProducts(store.products, remote.products, new Set(deletedIds));
+
+      // Primero restauramos la copia local; si el segundo paso falla, nunca se
+      // pierde lo que sí alcanzamos a descargar.
+      persist({ products, deletedProductIds: deletedIds });
+      const reconciled = await syncProducts({ products, deletedIds });
+      const finalDeletedIds = [...new Set([...deletedIds, ...reconciled.deletedIds])];
+      persist({
+        // Tras una sincronización aceptada, la respuesta del servidor es la
+        // lista canónica (también resuelve un mismo SKU creado con otro id).
+        products: reconciled.products.filter((product) => !finalDeletedIds.includes(product.id)),
+        deletedProductIds: finalDeletedIds,
+      });
     } catch (error) {
       setCatalogError((error as Error).message);
     } finally {
@@ -379,15 +396,48 @@ export function PosProvider({ children }: { children: ReactNode }) {
   }, [refreshWorkshopOrders]);
 
   const createProduct = useCallback(async (input: ProductInput) => {
-    const product = await createProductApi(input);
+    const product = makeLocalProduct(input);
     persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
+    await refreshCatalog();
     return product;
-  }, []);
+  }, [refreshCatalog]);
 
   const updateProduct = useCallback(async (id: string, input: ProductInput) => {
-    const product = await updateProductApi(id, input);
+    const current = store.products.find((item) => item.id === id);
+    if (!current) throw new Error("El producto ya no existe.");
+    const product = makeLocalProduct(input, current);
     persist({ products: store.products.map((item) => item.id === id ? product : item) });
+    await refreshCatalog();
     return product;
+  }, [refreshCatalog]);
+
+  const deleteProduct = useCallback(async (id: string) => {
+    if (getAuthSession()?.user.role !== "admin") {
+      throw new Error("Solo un administrador puede eliminar productos.");
+    }
+    const deletedProductIds = [...new Set([...store.deletedProductIds, id])];
+    persist({
+      products: store.products.filter((product) => product.id !== id),
+      deletedProductIds,
+    });
+    try {
+      await deleteProductApi(id);
+      await refreshCatalog();
+    } catch (error) {
+      // La marca local queda pendiente y se enviará automáticamente al volver
+      // la conexión; por eso el producto no reaparece.
+      setCatalogError((error as Error).message);
+    }
+  }, [refreshCatalog]);
+
+  const mergeRemoteSales = useCallback((remoteSales: CompletedSale[]) => {
+    const byId = new Map(store.sales.map((sale) => [sale.id, sale]));
+    for (const remote of remoteSales) {
+      const local = byId.get(remote.id);
+      if (!local || saleProgress(remote) > saleProgress(local)) byId.set(remote.id, remote);
+    }
+    const sales = [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
+    if (JSON.stringify(sales) !== JSON.stringify(store.sales)) persist({ sales });
   }, []);
 
   const subtotal = useMemo(
@@ -1090,6 +1140,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       refreshCatalog,
       createProduct,
       updateProduct,
+      deleteProduct,
+      mergeRemoteSales,
     }),
     [
       snapshot,
@@ -1131,6 +1183,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       refreshCatalog,
       createProduct,
       updateProduct,
+      deleteProduct,
+      mergeRemoteSales,
       catalogLoading,
       catalogError,
     ],
@@ -1143,4 +1197,52 @@ export function usePos() {
   const ctx = useContext(PosContext);
   if (!ctx) throw new Error("usePos must be used within PosProvider");
   return ctx;
+}
+
+function mergeProducts(local: PosProduct[], remote: PosProduct[], deleted: Set<string>) {
+  const byId = new Map<string, PosProduct>();
+  for (const product of [...local, ...remote]) {
+    if (deleted.has(product.id)) continue;
+    const current = byId.get(product.id);
+    if (!current || productTime(product) >= productTime(current)) byId.set(product.id, product);
+  }
+  return [...byId.values()].sort((a, b) => a.name.localeCompare(b.name));
+}
+
+function productTime(product: PosProduct) {
+  const value = product.updatedAt ? Date.parse(product.updatedAt) : 0;
+  return Number.isFinite(value) ? value : 0;
+}
+
+function makeLocalProduct(input: ProductInput, current?: PosProduct): PosProduct {
+  return {
+    ...input,
+    id: current?.id ?? crypto.randomUUID(),
+    updatedAt: new Date().toISOString(),
+    stock: input.stock ?? 0,
+    location: current?.location ?? "",
+    upc: input.upc ?? "",
+    barcode: input.sku,
+    image: input.image ?? "",
+    images: input.images ?? [],
+    hasVariants: input.hasVariants ?? Boolean(input.variants?.length),
+    variants: (input.variants ?? []).map((variant) => ({
+      ...variant,
+      id: variant.id ?? crypto.randomUUID(),
+      upc: variant.upc ?? "",
+      barcode: variant.sku,
+      location: variant.location ?? "",
+    })),
+    requiresSerial: input.requiresSerial ?? false,
+    serialUnits: (input.serialUnits ?? []).map((unit) => ({
+      ...unit,
+      id: unit.id ?? crypto.randomUUID(),
+      location: unit.location ?? "",
+    })),
+  };
+}
+
+function saleProgress(sale: CompletedSale) {
+  const statusWeight = sale.status === "completada" ? 0 : sale.status === "parcialmente_devuelta" ? 1 : 2;
+  return statusWeight * 1000 + sale.returns.length;
 }

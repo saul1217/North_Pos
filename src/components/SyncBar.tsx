@@ -1,13 +1,20 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { usePos } from "@/context/PosContext";
-import { pendingSales, syncSales } from "@/lib/sync/sync";
+import { fetchSales, pendingSales, syncSales } from "@/lib/sync/sync";
 
 // Thin status bar shown on every POS screen. Reads sales via the public usePos
 // hook (no coupling to POS internals) and pushes the pending ones to the
 // backend automatically: shortly after a sale, on reconnect, and on a timer.
 export function SyncBar() {
-  const { sales, workshopSyncPending, syncWorkshopOrders } = usePos();
+  const {
+    sales,
+    workshopSyncPending,
+    syncWorkshopOrders,
+    mergeRemoteSales,
+    refreshCatalog,
+    catalogError,
+  } = usePos();
   const [online, setOnline] = useState(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
   );
@@ -27,10 +34,17 @@ export function SyncBar() {
     const res = await syncSales(salesRef.current);
     setPending(res.pending);
     setError(res.ok ? null : (res.error ?? "error"));
+    try {
+      const remoteSales = await fetchSales();
+      mergeRemoteSales(remoteSales);
+    } catch (salesError) {
+      setError((salesError as Error).message || "No se pudieron descargar las ventas");
+    }
+    await refreshCatalog();
     await syncWorkshopOrders();
     setSyncing(false);
     syncingRef.current = false;
-  }, [syncWorkshopOrders]);
+  }, [mergeRemoteSales, refreshCatalog, syncWorkshopOrders]);
 
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
@@ -59,7 +73,8 @@ export function SyncBar() {
   }, [runSync]);
 
   const totalPending = pending + workshopSyncPending;
-  const state = !online ? "offline" : totalPending > 0 ? "pending" : "synced";
+  const hasSyncError = Boolean(error || catalogError);
+  const state = !online ? "offline" : totalPending > 0 || hasSyncError ? "pending" : "synced";
   const styles = {
     offline: "border-red-200 bg-red-50 text-red-700",
     pending: "border-amber-200 bg-amber-50 text-amber-800",
@@ -69,15 +84,17 @@ export function SyncBar() {
     ? "Sin conexión"
     : totalPending > 0
       ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} por sincronizar`
-      : "Ventas sincronizadas";
-  const Icon = !online ? CloudOff : pending > 0 ? Cloud : Check;
+      : hasSyncError
+        ? "Sincronización pendiente"
+      : "Datos sincronizados";
+  const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
 
   return (
     <div className="pos-no-print flex shrink-0 items-center justify-end border-b border-north-border bg-white px-4 py-1.5">
       <button
         type="button"
         onClick={() => void runSync()}
-        title={error ? `Error: ${error}` : "Sincronizar ahora"}
+        title={error || catalogError ? `Error: ${error || catalogError}` : "Sincronizar ahora"}
         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${styles}`}
       >
         {syncing ? (

@@ -29,6 +29,7 @@ function toPayload(sale: CompletedSale) {
     folio: sale.folio,
     date: sale.date,
     items: sale.items.map((i) => ({
+      lineId: i.lineId,
       productId: i.productId,
       variantId: i.variantId,
       serialNumber: i.serialNumber,
@@ -37,18 +38,23 @@ function toPayload(sale: CompletedSale) {
       variantLabel: i.variantLabel,
       price: i.price,
       quantity: i.quantity,
+      lineDiscount: i.lineDiscount,
     })),
     subtotal: sale.subtotal,
     discount: sale.discount,
     total: sale.total,
     payments: sale.payments.map((p) => ({ method: p.method, amount: p.amount })),
     status: sale.status,
+    amountReceived: sale.amountReceived,
+    change: sale.change,
+    cancelReason: sale.cancelReason,
+    returns: sale.returns,
   };
 }
 
 export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
   const pending = pendingSales(sales);
-  if (pending.length === 0) return { ok: true, pushed: 0, pending: 0 };
+  if (sales.length === 0) return { ok: true, pushed: 0, pending: 0 };
 
   try {
     const res = await fetch(`${API_BASE}/api/sales/sync`, {
@@ -57,7 +63,9 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
         "Content-Type": "application/json",
         ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
       },
-      body: JSON.stringify({ sales: pending.map(toPayload) }),
+      // Enviar todas es seguro: el backend usa el id como llave idempotente.
+      // Así también conserva cancelaciones/devoluciones hechas después.
+      body: JSON.stringify({ sales: sales.map(toPayload) }),
     });
     if (res.status === 401 && typeof window !== "undefined") {
       clearAuthSession();
@@ -71,6 +79,20 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
   } catch (err) {
     return { ok: false, pushed: 0, pending: pending.length, error: (err as Error).message };
   }
+}
+
+export async function fetchSales(): Promise<CompletedSale[]> {
+  const res = await fetch(`${API_BASE}/api/sales`, {
+    headers: {
+      ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+    },
+  });
+  if (res.status === 401 && typeof window !== "undefined") {
+    clearAuthSession();
+    window.dispatchEvent(new CustomEvent("northbike-auth-expired"));
+  }
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  return (await res.json()) as CompletedSale[];
 }
 
 export { API_BASE };

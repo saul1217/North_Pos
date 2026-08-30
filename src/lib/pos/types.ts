@@ -43,6 +43,7 @@ export type SerialUnit = {
 
 export type PosProduct = {
   id: string;
+  updatedAt?: string;
   sku: string;
   name: string;
   category: PosProductCategory;
@@ -257,6 +258,7 @@ export type WorkshopSyncOperation =
 
 export type PosPersistedState = {
   products: PosProduct[];
+  deletedProductIds: string[];
   sales: CompletedSale[];
   movements: InventoryMovement[];
   layaways: Layaway[];

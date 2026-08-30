@@ -8,6 +8,11 @@ export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "lo
   serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id" | "location"> & { id?: string; location?: string }>;
 };
 
+export type ProductSyncState = {
+  products: PosProduct[];
+  deletedIds: string[];
+};
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const token = getAccessToken();
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
@@ -50,6 +55,17 @@ export function fetchProducts(): Promise<PosProduct[]> {
   return request<PosProduct[]>("/api/products");
 }
 
+export function fetchProductSync(): Promise<ProductSyncState> {
+  return request<ProductSyncState>("/api/products/sync");
+}
+
+export function syncProducts(input: ProductSyncState): Promise<ProductSyncState> {
+  return request<ProductSyncState>("/api/products/sync", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export function createProduct(input: ProductInput): Promise<PosProduct> {
   return request<PosProduct>("/api/products", {
     method: "POST",
@@ -61,6 +77,12 @@ export function updateProduct(id: string, input: ProductInput): Promise<PosProdu
   return request<PosProduct>(`/api/products/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),
+  });
+}
+
+export function deleteProduct(id: string): Promise<{ ok: true; id: string }> {
+  return request<{ ok: true; id: string }>(`/api/products/${id}`, {
+    method: "DELETE",
   });
 }
 
