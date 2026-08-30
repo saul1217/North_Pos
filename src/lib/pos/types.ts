@@ -1,12 +1,4 @@
-export type PosProductCategory =
-  | "bicicletas"
-  | "cascos"
-  | "llantas"
-  | "pedales"
-  | "guantes"
-  | "jerseys"
-  | "accesorios"
-  | "herramientas";
+export type PosProductCategory = string;
 
 export type PosProductStatus = "activo" | "inactivo";
 
@@ -107,6 +99,7 @@ export type CompletedSale = {
   id: string;
   folio: string;
   date: string;
+  cashier?: string;
   items: SaleLineItem[];
   subtotal: number;
   discount: number;

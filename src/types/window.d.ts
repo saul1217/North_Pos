@@ -8,6 +8,9 @@ declare global {
       platform: NodeJS.Platform;
       isElectron: boolean;
       ping: () => Promise<string>;
+      loadAuthSessionSync: () => string | null;
+      saveAuthSession: (dataJson: string) => Promise<boolean>;
+      clearAuthSession: () => Promise<boolean>;
       // Local SQLite persistence.
       loadStateSync: () => string | null;
       saveState: (dataJson: string) => Promise<boolean>;

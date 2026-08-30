@@ -8,6 +8,9 @@ contextBridge.exposeInMainWorld("pos", {
   isElectron: true,
   // Placeholder round-trip so we can confirm IPC works end to end.
   ping: () => ipcRenderer.invoke("pos:ping"),
+  loadAuthSessionSync: () => ipcRenderer.sendSync("pos:loadAuthSessionSync"),
+  saveAuthSession: (dataJson) => ipcRenderer.invoke("pos:saveAuthSession", dataJson),
+  clearAuthSession: () => ipcRenderer.invoke("pos:clearAuthSession"),
   // Local SQLite persistence. Load is synchronous (blocks briefly, once, at
   // startup — keeps the existing sync hydrate path); save is async.
   loadStateSync: () => ipcRenderer.sendSync("pos:loadStateSync"),

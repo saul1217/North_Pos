@@ -8,7 +8,7 @@ import { generateHistoricalSales, monthSeason } from "@/lib/pos/data/salesHistor
 
 const TZ = "America/Chihuahua";
 
-export const categoryMargin: Record<PosProductCategory, number> = {
+export const categoryMargin: Record<string, number> = {
   bicicletas: 0.18,
   cascos: 0.35,
   llantas: 0.28,

@@ -130,7 +130,7 @@ export function updateProductStock(
   return products.map((p) => {
     if (p.id !== productId) return p;
 
-    const next = { ...p };
+    const next = { ...p, updatedAt: new Date().toISOString() };
 
     if (variantId) {
       next.variants = p.variants.map((v) =>
@@ -192,6 +192,10 @@ export const categoryLabels: Record<string, string> = {
   accesorios: "Accesorios",
   herramientas: "Herramientas",
 };
+
+export function getCategoryLabel(category: string): string {
+  return categoryLabels[category] ?? category.replace(/[-_]+/g, " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export const paymentMethodLabels: Record<string, string> = {
   efectivo: "Efectivo",

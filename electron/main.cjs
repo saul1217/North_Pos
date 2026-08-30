@@ -1,6 +1,37 @@
-const { app, BrowserWindow, dialog, ipcMain } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
+const fs = require("node:fs");
 const path = require("node:path");
 const db = require("./db.cjs");
+
+function authPath() {
+  return path.join(app.getPath("userData"), "auth.bin");
+}
+
+ipcMain.on("pos:loadAuthSessionSync", (event) => {
+  try {
+    if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(authPath())) {
+      event.returnValue = null;
+      return;
+    }
+    const encrypted = fs.readFileSync(authPath(), "utf8");
+    event.returnValue = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+  } catch (err) {
+    console.error("pos:loadAuthSessionSync error:", err);
+    event.returnValue = null;
+  }
+});
+
+ipcMain.handle("pos:saveAuthSession", (_event, dataJson) => {
+  if (!safeStorage.isEncryptionAvailable()) throw new Error("El almacén seguro de Windows no está disponible");
+  const encrypted = safeStorage.encryptString(dataJson).toString("base64");
+  fs.writeFileSync(authPath(), encrypted, { encoding: "utf8", mode: 0o600 });
+  return true;
+});
+
+ipcMain.handle("pos:clearAuthSession", () => {
+  if (fs.existsSync(authPath())) fs.rmSync(authPath());
+  return true;
+});
 
 // Minimal IPC so the renderer can confirm it's talking to the main process.
 ipcMain.handle("pos:ping", () => `pong @ ${new Date().toISOString()}`);
@@ -61,8 +92,18 @@ function createWindow() {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
       nodeIntegration: false,
+      sandbox: true,
     },
   });
+
+  const allowedOrigin = isDev ? new URL(DEV_SERVER_URL).origin : null;
+  win.webContents.on("will-navigate", (event, url) => {
+    const allowed = isDev
+      ? new URL(url).origin === allowedOrigin
+      : url.startsWith("file://");
+    if (!allowed) event.preventDefault();
+  });
+  win.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
 
   if (isDev) {
     win.loadURL(DEV_SERVER_URL);

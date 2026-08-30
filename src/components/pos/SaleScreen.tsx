@@ -5,7 +5,7 @@ import { Minus, Plus, Search, Trash2 } from "lucide-react";
 import { useMemo, useRef, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import {
-  categoryLabels,
+  getCategoryLabel,
   formatPosPrice,
   getProductDisplayStock,
   getStockStatus,
@@ -60,7 +60,7 @@ function ProductTile({
       </div>
       <div className="flex flex-1 flex-col gap-1 p-2.5">
         <p className="text-[10px] font-semibold uppercase tracking-wider text-north-steel">
-          {categoryLabels[product.category]}
+          {getCategoryLabel(product.category)}
         </p>
         <p className="line-clamp-2 text-sm font-medium leading-tight text-north-dark">
           {product.name}
@@ -162,7 +162,7 @@ export function SaleScreen() {
         p.sku.toLowerCase().includes(q) ||
         (p.upc ?? "").toLowerCase().includes(q) ||
         p.barcode.includes(q) ||
-          categoryLabels[p.category]?.toLowerCase().includes(q) ||
+          getCategoryLabel(p.category).toLowerCase().includes(q) ||
           p.variants.some(
             (v) =>
               v.sku.toLowerCase().includes(q) ||

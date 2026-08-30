@@ -4,9 +4,9 @@ import { AlertTriangle, History, PackageX, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import {
-  categoryLabels,
   getAvailableStock,
   getStockStatus,
+  getCategoryLabel,
   movementTypeLabels,
 } from "@/lib/pos/inventory";
 import type { InventoryAdjustmentType, PosProduct } from "@/lib/pos/types";
@@ -157,8 +157,8 @@ export default function PosInventarioPage() {
         </div>
       </header>
 
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-        <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+        <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6">
           {tab === "stock" ? (
             <table className="w-full min-w-[800px] text-left text-sm">
               <thead className="border-b border-north-border bg-north-background text-xs uppercase text-north-steel">
@@ -185,7 +185,7 @@ export default function PosInventarioPage() {
                       <td className="px-4 py-3">
                         <p className="font-medium">{p.name}</p>
                         <p className="text-xs text-north-muted">
-                          {categoryLabels[p.category]}
+                          {getCategoryLabel(p.category)}
                         </p>
                       </td>
                       <td className="px-4 py-3 font-mono text-xs">{p.sku}</td>
@@ -262,7 +262,7 @@ export default function PosInventarioPage() {
         </div>
 
         {selected && tab === "stock" && (
-          <aside className="w-full border-t border-north-border bg-white p-5 lg:w-80 lg:border-l lg:border-t-0">
+          <aside className="w-full shrink-0 border-t border-north-border bg-white p-5 lg:w-80 lg:border-l lg:border-t-0">
             <h2 className="font-display text-lg font-bold">{selected.name}</h2>
             <p className="font-mono text-xs text-north-muted">{selected.sku}</p>
 

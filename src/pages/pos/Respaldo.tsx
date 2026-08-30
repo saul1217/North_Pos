@@ -16,13 +16,19 @@ export default function PosRespaldoPage() {
   const { sales, movements } = usePos();
   const [period, setPeriod] = useState<SalesExportPeriod>("month");
   const [paymentMethod, setPaymentMethod] = useState<"todos" | PaymentMethod>("todos");
+  const [cashier, setCashier] = useState("todos");
   const [startDate, setStartDate] = useState(localDateKey);
   const [endDate, setEndDate] = useState(localDateKey);
   const [message, setMessage] = useState("");
   const bounds = useMemo(() => getSalesExportBounds({ period, startDate, endDate }), [period, startDate, endDate]);
   const periodSales = useMemo(() => filterSalesForExport(sales, bounds), [sales, bounds]);
   const filteredMovements = useMemo(() => filterMovementsForExport(movements, bounds), [movements, bounds]);
-  const filteredSales = useMemo(() => paymentMethod === "todos" ? periodSales : periodSales.filter((sale) => sale.payments.some((payment) => payment.method === paymentMethod)), [periodSales, paymentMethod]);
+  const cashierOptions = useMemo(() => [...new Set(periodSales.map((sale) => sale.cashier ?? "Sin usuario"))].sort((a, b) => a.localeCompare(b, "es")), [periodSales]);
+  const filteredSales = useMemo(() => periodSales.filter((sale) => {
+    const matchesPayment = paymentMethod === "todos" || sale.payments.some((payment) => payment.method === paymentMethod);
+    const matchesCashier = cashier === "todos" || (sale.cashier ?? "Sin usuario") === cashier;
+    return matchesPayment && matchesCashier;
+  }), [periodSales, paymentMethod, cashier]);
   const grossTotal = filteredSales.reduce((sum, sale) => sum + sale.total, 0);
   const netTotal = filteredSales.reduce((sum, sale) => sum + (sale.status === "completada" || sale.status === "parcialmente_devuelta" ? sale.total - sale.returns.reduce((returnSum, record) => returnSum + record.items.reduce((itemSum, item) => itemSum + item.unitPrice * item.quantity, 0), 0) : 0), 0);
 
@@ -52,6 +58,7 @@ export default function PosRespaldoPage() {
             <div className="flex items-start gap-3"><FileSpreadsheet className="mt-0.5 h-5 w-5 text-north-primary" /><div><h2 className="font-semibold">Periodo del reporte</h2><p className="mt-1 text-sm text-north-muted">Incluye el detalle de cada producto vendido, pagos, descuentos y devoluciones.</p></div></div>
             <label className="mt-5 block text-sm font-medium">Filtrar por<select value={period} onChange={(event) => setPeriod(event.target.value as SalesExportPeriod)} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="day">Hoy</option><option value="month">Mes actual</option><option value="year">Año actual</option><option value="range">Rango personalizado</option></select></label>
             <label className="mt-4 block text-sm font-medium">Forma de pago<select value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as "todos" | PaymentMethod)} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="todos">Todos los métodos</option><option value="efectivo">Solo efectivo</option><option value="tarjeta">Solo tarjeta</option><option value="transferencia">Solo transferencia</option></select></label>
+            <label className="mt-4 block text-sm font-medium">Usuario que registró<select value={cashier} onChange={(event) => setCashier(event.target.value)} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="todos">Todos los usuarios</option>{cashierOptions.map((option) => <option key={option} value={option}>{option}</option>)}</select></label>
             {period === "range" && <div className="mt-4 grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium">Desde<input type="date" value={startDate} onChange={(event) => setStartDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label><label className="text-sm font-medium">Hasta<input type="date" value={endDate} onChange={(event) => setEndDate(event.target.value)} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label></div>}
             <div className="mt-5 border border-sky-200 bg-sky-50 px-3 py-3 text-sm text-sky-900">Se exportan las ventas guardadas en esta computadora. Las cancelaciones aparecen para mantener el historial y el total neto excluye ventas canceladas y devoluciones.</div>
           </section>

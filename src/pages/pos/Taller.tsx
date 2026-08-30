@@ -73,6 +73,7 @@ export default function PosTallerPage() {
   const [budgetItems, setBudgetItems] = useState<WorkshopBudgetItem[]>([]);
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "transferencia">("efectivo");
   const [savingBudget, setSavingBudget] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
 
   const filteredOrders = workshopOrders.filter((order) =>
     orderFilter === "activas"
@@ -169,6 +170,7 @@ export default function PosTallerPage() {
       clientProblem: selected.clientProblem,
     });
     setSelected({ ...selected, diagnosis, technicalNotes });
+    setSaveMessage("Diagnóstico guardado correctamente.");
   }
 
   async function saveBudget() {
@@ -192,6 +194,7 @@ export default function PosTallerPage() {
         technicalNotes,
       });
       setSelected(updated);
+      setSaveMessage("Presupuesto guardado correctamente.");
     } catch (error) {
       setFormError((error as Error).message);
     } finally {
@@ -204,6 +207,7 @@ export default function PosTallerPage() {
     try {
       const updated = await payWorkshopOrder(selected.id, paymentMethod);
       setSelected(updated);
+      setSaveMessage("Pago registrado correctamente.");
     } catch (error) {
       setFormError((error as Error).message);
     }
@@ -214,6 +218,7 @@ export default function PosTallerPage() {
     updateWorkshopOrder(selected.id, { status: "entregada" });
     setSelected({ ...selected, status: "entregada" });
     setOrderFilter("procesadas");
+    setSaveMessage("Orden marcada como entregada.");
   }
 
   function addBudgetLine() {
@@ -292,11 +297,12 @@ export default function PosTallerPage() {
               </button>
             ))}
           </div>
+          {saveMessage && <p className="mt-3 border border-emerald-300 bg-emerald-50 px-3 py-2 text-sm text-emerald-800" role="status">{saveMessage}</p>}
         </header>
 
         {view === "list" ? (
-          <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
-            <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
+            <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b border-north-border bg-north-background text-xs uppercase text-north-steel">
                   <tr>

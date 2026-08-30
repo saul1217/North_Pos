@@ -1,7 +1,7 @@
 import { Printer, RefreshCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
-import { categoryLabels } from "@/lib/pos/inventory";
+import { getCategoryLabel } from "@/lib/pos/inventory";
 import { code128Bits } from "@/lib/pos/code128";
 import type { PosProduct } from "@/lib/pos/types";
 
@@ -85,7 +85,7 @@ export default function PosCodigosBarrasPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return entries;
-    return entries.filter((entry) => [entry.name, entry.variantLabel, entry.sku, entry.upc, categoryLabels[entry.category]]
+    return entries.filter((entry) => [entry.name, entry.variantLabel, entry.sku, entry.upc, getCategoryLabel(entry.category)]
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(q)));
   }, [entries, query]);
@@ -156,7 +156,7 @@ export default function PosCodigosBarrasPage() {
                 const count = copies[entry.key] ?? 0;
                 return <tr key={entry.key} className={`border-b border-north-border ${count > 0 ? "bg-north-primary/5" : ""}`}>
                   <td className="px-4 py-3"><input type="checkbox" checked={count > 0} onChange={() => toggleEntry(entry)} aria-label={`Seleccionar ${entry.name} ${entry.variantLabel ?? ""}`} /></td>
-                  <td className="px-4 py-3"><p className="font-medium">{entry.name}</p><p className="text-xs text-north-muted">{entry.variantLabel ?? categoryLabels[entry.category]}</p></td>
+                  <td className="px-4 py-3"><p className="font-medium">{entry.name}</p><p className="text-xs text-north-muted">{entry.variantLabel ?? getCategoryLabel(entry.category)}</p></td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.sku}</td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>

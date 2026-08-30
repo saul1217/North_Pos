@@ -71,7 +71,7 @@ function columnName(index: number): string {
 }
 
 type Cell = string | number;
-const EXPORT_COLUMN_COUNT = 18;
+const EXPORT_COLUMN_COUNT = 19;
 const MOVEMENT_COLUMN_COUNT = 11;
 
 function sharedStringTable(rows: Cell[][]): { values: string[]; indexes: Map<string, number> } {
@@ -140,7 +140,7 @@ function buildWorkbook(salesRows: Cell[][], movementRows: Cell[][]): Uint8Array 
     ["_rels/.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`],
     ["xl/workbook.xml", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="Ventas" sheetId="1" r:id="rId1"/><sheet name="Movimientos de inventario" sheetId="2" r:id="rId4"/></sheets></workbook>`],
     ["xl/_rels/workbook.xml.rels", `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/><Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/><Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/sharedStrings" Target="sharedStrings.xml"/><Relationship Id="rId4" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/></Relationships>`],
-    ["xl/worksheets/sheet1.xml", buildSheet(salesRows, indexes, { columnCount: EXPORT_COLUMN_COUNT, widths: [13, 11, 13, 17, 28, 20, 20, 10, 15, 15, 15, 13, 15, 15, 15, 17, 13, 15], currencyColumns: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17], quantityColumns: [7] })],
+    ["xl/worksheets/sheet1.xml", buildSheet(salesRows, indexes, { columnCount: EXPORT_COLUMN_COUNT, widths: [13, 11, 13, 17, 28, 20, 20, 10, 15, 15, 15, 13, 15, 15, 15, 17, 13, 15, 18], currencyColumns: [8, 9, 10, 11, 12, 13, 14, 15, 16, 17], quantityColumns: [7] })],
     ["xl/worksheets/sheet2.xml", buildSheet(movementRows, indexes, { columnCount: MOVEMENT_COLUMN_COUNT, widths: [13, 11, 28, 20, 22, 12, 13, 13, 18, 18, 28], quantityColumns: [5, 6, 7] })],
     ["xl/styles.xml", buildStyles()],
     ["xl/sharedStrings.xml", sharedStrings],
@@ -178,7 +178,7 @@ function buildWorkbook(salesRows: Cell[][], movementRows: Cell[][]): Uint8Array 
 }
 
 function exportRows(sales: CompletedSale[], bounds: SalesExportBounds): Cell[][] {
-  const headers = ["Fecha", "Hora", "Folio", "Estado", "Producto", "Variante", "SKU", "Cantidad", "Precio unitario", "Importe línea", "Subtotal venta", "Descuento", "Total venta", "Efectivo", "Tarjeta", "Transferencia", "Devuelto", "Total neto"];
+  const headers = ["Fecha", "Hora", "Folio", "Estado", "Producto", "Variante", "SKU", "Cantidad", "Precio unitario", "Importe línea", "Subtotal venta", "Descuento", "Total venta", "Efectivo", "Tarjeta", "Transferencia", "Devuelto", "Total neto", "Usuario"];
   const rows: Cell[][] = [
     ["North Bike POS"],
     [`Reporte de ventas · ${bounds.label}`],
@@ -194,7 +194,7 @@ function exportRows(sales: CompletedSale[], bounds: SalesExportBounds): Cell[][]
     sale.items.forEach((item, index) => rows.push([
       date.toLocaleDateString("es-MX"), date.toLocaleTimeString("es-MX", { hour: "2-digit", minute: "2-digit" }), sale.folio,
       saleStatusLabels[sale.status] ?? sale.status, item.name, item.variantLabel ?? "", item.sku, item.quantity, item.price, item.price * item.quantity,
-      index === 0 ? sale.subtotal : "", index === 0 ? sale.discount : "", index === 0 ? sale.total : "", index === 0 ? paymentAmount("efectivo") : "", index === 0 ? paymentAmount("tarjeta") : "", index === 0 ? paymentAmount("transferencia") : "", index === 0 ? returned : "", index === 0 ? saleNetTotal(sale) : "",
+      index === 0 ? sale.subtotal : "", index === 0 ? sale.discount : "", index === 0 ? sale.total : "", index === 0 ? paymentAmount("efectivo") : "", index === 0 ? paymentAmount("tarjeta") : "", index === 0 ? paymentAmount("transferencia") : "", index === 0 ? returned : "", index === 0 ? saleNetTotal(sale) : "", index === 0 ? sale.cashier ?? "Sin usuario" : "",
     ]));
   });
   return rows;

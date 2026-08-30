@@ -50,18 +50,32 @@ export function CheckoutModal() {
   }
 
   function handleConfirm() {
-    const valid = splits.filter((s) => s.amount > 0);
+    let valid = splits.filter((s) => s.amount > 0);
+    let receivedInput = cashReceived;
+    if (valid.length === 1 && valid[0].method === "efectivo" && valid[0].amount > total && !receivedInput.trim()) {
+      receivedInput = String(valid[0].amount);
+      setCashReceived(String(valid[0].amount));
+      valid = [{ ...valid[0], amount: total }];
+    }
     if (valid.reduce((s, p) => s + p.amount, 0) < total - 0.01) {
       setError("El total cubierto debe igualar el monto de la venta.");
       return;
     }
+    if (valid.reduce((s, p) => s + p.amount, 0) > total + 0.01) {
+      setError("El pago aplicado no puede superar el total. Para efectivo, captura el excedente en 'Efectivo recibido'.");
+      return;
+    }
     const cashSplit = valid.find((s) => s.method === "efectivo");
-    const received = cashSplit ? Number(cashReceived) || cashSplit.amount : undefined;
+    const received = cashSplit ? Number(receivedInput) || cashSplit.amount : undefined;
     if (cashSplit && received !== undefined && received < cashSplit.amount) {
       setError("El efectivo recibido debe cubrir la parte en efectivo.");
       return;
     }
-    completeSale(valid, received);
+    const sale = completeSale(valid, received);
+    if (!sale) {
+      setError("No se pudo registrar el cobro. Verifica que el pago coincida con el total.");
+      return;
+    }
     setSplits([{ method: "efectivo", amount: 0 }]);
     setCashReceived("");
     setError("");
@@ -181,7 +195,7 @@ export function CheckoutModal() {
               />
               <div className="flex justify-between text-sm">
                 <span className="text-north-muted">Cambio</span>
-                <span className="font-semibold">{formatPosPrice(change)}</span>
+                <span className={`font-semibold ${change > 0 ? "text-emerald-700" : ""}`}>{formatPosPrice(change)}</span>
               </div>
             </div>
           )}

@@ -149,6 +149,7 @@ function persist(partial: Partial<PosStore>) {
 }
 
 function recordStockChange(
+  products: PosProduct[],
   product: PosProduct,
   variantId: string | undefined,
   delta: number,
@@ -173,14 +174,14 @@ function recordStockChange(
     reason,
     user: getAuthSession()?.user.username,
   });
-  const products = updateProductStock(
-    store.products,
+  const nextProducts = updateProductStock(
+    products,
     product.id,
     variantId,
     delta,
     serialNumber,
   );
-  return { products, movement };
+  return { products: nextProducts, movement };
 }
 
 type PosContextValue = {
@@ -230,6 +231,11 @@ type PosContextValue = {
     type: InventoryAdjustmentType;
     reason: string;
   }) => void;
+  receiveInventory: (items: Array<{
+    productId: string;
+    variantId?: string;
+    quantity: number;
+  }>) => number;
   createLayaway: (input: {
     customer: Layaway["customer"];
     items: SaleLineItem[];
@@ -303,6 +309,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       // Primero restauramos la copia local; si el segundo paso falla, nunca se
       // pierde lo que sí alcanzamos a descargar.
       persist({ products, deletedProductIds: deletedIds });
+      if (getAuthSession()?.user.role !== "admin") return;
       const reconciled = await syncProducts({ products, deletedIds });
       const finalDeletedIds = [...new Set([...deletedIds, ...reconciled.deletedIds])];
       persist({
@@ -396,6 +403,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
   }, [refreshWorkshopOrders]);
 
   const createProduct = useCallback(async (input: ProductInput) => {
+    if (getAuthSession()?.user.role !== "admin") {
+      throw new Error("Solo un administrador puede crear productos.");
+    }
     const product = makeLocalProduct(input);
     persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
     await refreshCatalog();
@@ -403,6 +413,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
   }, [refreshCatalog]);
 
   const updateProduct = useCallback(async (id: string, input: ProductInput) => {
+    if (getAuthSession()?.user.role !== "admin") {
+      throw new Error("Solo un administrador puede editar productos.");
+    }
     const current = store.products.find((item) => item.id === id);
     if (!current) throw new Error("El producto ya no existe.");
     const product = makeLocalProduct(input, current);
@@ -434,7 +447,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
     const byId = new Map(store.sales.map((sale) => [sale.id, sale]));
     for (const remote of remoteSales) {
       const local = byId.get(remote.id);
-      if (!local || saleProgress(remote) > saleProgress(local)) byId.set(remote.id, remote);
+      if (!local || saleProgress(remote) > saleProgress(local)) {
+        byId.set(remote.id, remote);
+      } else if (!local.cashier && remote.cashier) {
+        byId.set(remote.id, { ...local, cashier: remote.cashier });
+      }
     }
     const sales = [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
     if (JSON.stringify(sales) !== JSON.stringify(store.sales)) persist({ sales });
@@ -588,6 +605,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         id: crypto.randomUUID(),
         folio,
         date: new Date().toISOString(),
+        cashier: getAuthSession()?.user.username,
         items: [...store.currentSale.items],
         subtotal: saleSubtotal,
         discount: store.currentSale.discount,
@@ -606,6 +624,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         const product = products.find((p) => p.id === line.productId);
         if (!product) continue;
         const result = recordStockChange(
+          products,
           product,
           line.variantId,
           -line.quantity,
@@ -653,6 +672,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       const product = products.find((p) => p.id === line.productId);
       if (!product) continue;
       const result = recordStockChange(
+        products,
         product,
         line.variantId,
         returnedQty,
@@ -723,6 +743,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         const product = products.find((p) => p.id === line.productId);
         if (!product) continue;
         const result = recordStockChange(
+          products,
           product,
           line.variantId,
           qty,
@@ -784,6 +805,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
           : Math.abs(input.quantity);
 
       const result = recordStockChange(
+        store.products,
         product,
         input.variantId,
         delta,
@@ -799,6 +821,42 @@ export function PosProvider({ children }: { children: ReactNode }) {
     },
     [],
   );
+
+  const receiveInventory = useCallback((items: Array<{
+    productId: string;
+    variantId?: string;
+    quantity: number;
+  }>) => {
+    let products = store.products;
+    const movements = [...store.movements];
+    const reference = `REC-${Date.now()}`;
+    let receivedUnits = 0;
+
+    for (const item of items) {
+      const quantity = Math.floor(Math.abs(item.quantity));
+      if (!Number.isFinite(quantity) || quantity <= 0) continue;
+
+      const product = products.find((entry) => entry.id === item.productId);
+      if (!product) continue;
+      if (item.variantId && !product.variants.some((variant) => variant.id === item.variantId)) continue;
+
+      const result = recordStockChange(
+        products,
+        product,
+        item.variantId,
+        quantity,
+        "entrada",
+        reference,
+        "Recepción rápida por UPC global",
+      );
+      products = result.products;
+      movements.push(result.movement);
+      receivedUnits += quantity;
+    }
+
+    if (receivedUnits > 0) persist({ products, movements });
+    return receivedUnits;
+  }, []);
 
   const createLayaway = useCallback(
     (input: {
@@ -834,6 +892,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         const product = products.find((p) => p.id === line.productId);
         if (!product) continue;
         const result = recordStockChange(
+          products,
           product,
           line.variantId,
           -line.quantity,
@@ -905,6 +964,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       const product = products.find((p) => p.id === line.productId);
       if (!product) continue;
       const result = recordStockChange(
+        products,
         product,
         line.variantId,
         line.quantity,
@@ -1116,6 +1176,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       cancelSale,
       processReturn,
       adjustInventory,
+      receiveInventory,
       createLayaway,
       addLayawayPayment,
       cancelLayaway,
@@ -1160,6 +1221,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       cancelSale,
       processReturn,
       adjustInventory,
+      receiveInventory,
       createLayaway,
       addLayawayPayment,
       cancelLayaway,
