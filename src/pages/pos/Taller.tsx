@@ -237,6 +237,16 @@ export default function PosTallerPage() {
     setSaveMessage(`${order.folio} marcada como terminada. Espera el pago antes de confirmar la entrega.`);
   }
 
+  function markOrderDelivered(order: WorkshopOrder) {
+    if (order.status !== "terminada" || order.paymentStatus !== "pagada") return;
+    updateWorkshopOrder(order.id, { status: "entregada" });
+    if (selected?.id === order.id) {
+      setSelected({ ...selected, status: "entregada" });
+    }
+    setOrderFilter("procesadas");
+    setSaveMessage(`${order.folio} marcada como entregada.`);
+  }
+
   function addBudgetLine() {
     setBudgetItems((prev) => [
       ...prev,
@@ -406,6 +416,22 @@ export default function PosTallerPage() {
                           >
                             Marcar como terminada
                           </button>
+                        )}
+                        {o.status === "terminada" && (
+                          o.paymentStatus === "pagada" ? (
+                            <button
+                              type="button"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                markOrderDelivered(o);
+                              }}
+                              className="h-9 border border-emerald-700 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-700 hover:text-white"
+                            >
+                              Confirmar entrega
+                            </button>
+                          ) : (
+                            <span className="text-xs font-semibold text-amber-700">Esperando pago</span>
+                          )
                         )}
                       </td>}
                     </tr>
