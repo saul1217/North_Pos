@@ -50,6 +50,8 @@ import {
 } from "@/lib/pos/storage";
 import {
   deleteProduct as deleteProductApi,
+  createProduct as createProductApi,
+  updateProduct as updateProductApi,
   fetchProductSync,
   fetchWorkshopOrders,
   createWorkshopOrder as createWorkshopOrderApi,
@@ -427,8 +429,20 @@ export function PosProvider({ children }: { children: ReactNode }) {
     }
     const product = makeLocalProduct(input);
     persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
-    await refreshCatalog();
-    return product;
+    try {
+      const remoteProduct = await createProductApi(input);
+      persist({
+        products: [...store.products.filter((item) => item.id !== product.id && item.sku !== remoteProduct.sku), remoteProduct]
+          .sort((a, b) => a.name.localeCompare(b.name)),
+      });
+      await refreshCatalog();
+      return remoteProduct;
+    } catch {
+      // La copia local conserva el producto para sincronizarlo al recuperar
+      // la conexión, sin impedir el trabajo del POS.
+      await refreshCatalog();
+      return product;
+    }
   }, [refreshCatalog]);
 
   const updateProduct = useCallback(async (id: string, input: ProductInput) => {
@@ -439,8 +453,15 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (!current) throw new Error("El producto ya no existe.");
     const product = makeLocalProduct(input, current);
     persist({ products: store.products.map((item) => item.id === id ? product : item) });
-    await refreshCatalog();
-    return product;
+    try {
+      const remoteProduct = await updateProductApi(id, input);
+      persist({ products: store.products.map((item) => item.id === id ? remoteProduct : item) });
+      await refreshCatalog();
+      return remoteProduct;
+    } catch {
+      await refreshCatalog();
+      return product;
+    }
   }, [refreshCatalog]);
 
   const deleteProduct = useCallback(async (id: string) => {
