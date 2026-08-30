@@ -348,7 +348,26 @@ export function PosProvider({ children }: { children: ReactNode }) {
             workshopSyncQueue: store.workshopSyncQueue.filter((item) => item.id !== operation.id),
           });
         } catch (error) {
-          setWorkshopError((error as Error).message || "No se pudo sincronizar una orden");
+          const message = (error as Error).message || "No se pudo sincronizar una orden";
+          const isInvalidDelivery = operation.kind === "update" &&
+            operation.payload.status === "entregada" &&
+            message.includes("terminada y pagada antes de entregarse");
+
+          if (isInvalidDelivery) {
+            // Una operación antigua pudo quedar en la cola local antes de que
+            // existiera la validación de pago. El backend es la fuente de
+            // verdad: descartar sólo esa entrega inválida permite recargar la
+            // orden y confirmar la entrega después del cobro.
+            persist({
+              workshopOrders: store.workshopOrders.map((order) =>
+                order.id === operation.orderId ? { ...order, status: "terminada" } : order,
+              ),
+              workshopSyncQueue: store.workshopSyncQueue.filter((item) => item.id !== operation.id),
+            });
+            setWorkshopError(null);
+          } else {
+            setWorkshopError(message);
+          }
           break;
         }
       }
