@@ -325,6 +325,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         price: product.price,
         minStock: product.minStock,
         upc: product.upc,
+        barcode: product.barcode,
         image: product.image,
         images: product.images ?? [],
         status: product.status === "activo" ? "inactivo" : "activo",

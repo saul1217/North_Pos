@@ -29,6 +29,7 @@ const statusLabels: Record<WorkshopStatus, string> = {
 export default function PosTallerPage() {
   const {
     workshopOrders,
+    products,
     checklistTemplate,
     createWorkshopOrder,
     updateWorkshopOrder,
@@ -62,7 +63,7 @@ export default function PosTallerPage() {
   const [checklist, setChecklist] = useState<ChecklistEntry[]>(
     checklistTemplate.map((item) => ({
       itemId: item.id,
-      status: "na" as const,
+      status: "ok" as const,
     })),
   );
   const [formError, setFormError] = useState("");
@@ -139,7 +140,6 @@ export default function PosTallerPage() {
       clientProblem: clientProblem || undefined,
     });
 
-    setPrintOrder(order);
     setView("list");
     resetForm();
   }
@@ -157,7 +157,7 @@ export default function PosTallerPage() {
     setClientProblem("");
     setPhotos([]);
     setChecklist(
-      checklistTemplate.map((item) => ({ itemId: item.id, status: "na" })),
+      checklistTemplate.map((item) => ({ itemId: item.id, status: "ok" as const })),
     );
     setFormError("");
   }
@@ -239,6 +239,24 @@ export default function PosTallerPage() {
     ]);
   }
 
+  function addRefactionLine() {
+    setBudgetItems((prev) => [
+      ...prev,
+      {
+        id: crypto.randomUUID(),
+        productId: undefined,
+        description: "",
+        type: "refaccion",
+        quantity: 1,
+        price: 0,
+      },
+    ]);
+  }
+
+  const availableRefactions = products.filter(
+    (product) => product.category.toLowerCase() === "refacciones" && product.status === "activo",
+  );
+
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col">
@@ -307,7 +325,7 @@ export default function PosTallerPage() {
 
         {view === "list" ? (
           <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
-            <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6">
+            {!selected && <div className="min-h-0 min-w-0 flex-1 overflow-auto p-4 md:p-6">
               <table className="w-full min-w-[720px] text-left text-sm">
                 <thead className="border-b border-north-border bg-north-background text-xs uppercase text-north-steel">
                   <tr>
@@ -336,9 +354,7 @@ export default function PosTallerPage() {
                         setTechnicalNotes(o.technicalNotes ?? "");
                         setBudgetItems(o.budget?.items ?? []);
                       }}
-                      className={`cursor-pointer border-b border-north-border hover:bg-north-background/50 ${
-                        selected?.id === o.id ? "bg-north-primary/5" : ""
-                      }`}
+                      className="cursor-pointer border-b border-north-border hover:bg-north-background/50"
                     >
                       <td className="px-4 py-3 font-medium">{o.folio}</td>
                       <td className="px-4 py-3">{o.customer.name}</td>
@@ -363,11 +379,19 @@ export default function PosTallerPage() {
                   ))}
                 </tbody>
               </table>
-            </div>
+            </div>}
 
             {selected && (
-              <aside className="w-full border-t border-north-border bg-white p-5 lg:w-96 lg:border-l lg:border-t-0">
-                <h2 className="font-display text-lg font-bold">{selected.folio}</h2>
+              <aside className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-white p-5 md:p-8">
+                <div className="mx-auto w-full max-w-5xl">
+                <button
+                  type="button"
+                  onClick={() => setSelected(null)}
+                  className="mb-5 h-10 border border-north-border px-4 text-sm font-semibold"
+                >
+                  ← Volver a órdenes
+                </button>
+                <h2 className="font-display text-2xl font-bold">{selected.folio}</h2>
                 <p className="text-sm capitalize text-north-muted">
                   {statusLabels[selected.status] ?? selected.status} · {selected.assignedTo}
                   {selected.paymentStatus === "pagada" && " · Pago confirmado"}
@@ -441,75 +465,38 @@ export default function PosTallerPage() {
                 </div>}
 
                 <div className="mt-4">
-                  <div className="mb-2 flex items-center justify-between">
-                    <p className="text-xs font-semibold uppercase text-north-steel">
-                      Presupuesto
-                    </p>
-                    <p className="mr-2 text-[11px] text-north-muted">
-                      Puedes agregar refacciones registradas o trabajos manuales sin afectar el inventario.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={isBudgetLocked}
-                      onClick={addBudgetLine}
-                      className="text-xs text-north-primary disabled:text-north-muted"
-                    >
-                      + Concepto manual
-                    </button>
+                  <div className="mb-3 flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase text-north-steel">Presupuesto</p>
+                      <p className="mt-1 max-w-xl text-xs text-north-muted">
+                        Agrega refacciones registradas o trabajos manuales. Los conceptos manuales no afectan el inventario.
+                      </p>
+                    </div>
+                    {!isBudgetLocked && <div className="flex flex-wrap gap-2">
+                      <button type="button" onClick={addRefactionLine} className="h-9 border border-north-border px-3 text-xs font-semibold text-north-primary">
+                        + Refacción
+                      </button>
+                      <button type="button" onClick={addBudgetLine} className="h-9 border border-north-border px-3 text-xs font-semibold text-north-primary">
+                        + Concepto manual
+                      </button>
+                    </div>}
                   </div>
                   {budgetItems.map((item, idx) => (
-                    <div key={item.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_100px_64px_32px] gap-1">
-                      <input
-                        value={item.description}
-                        placeholder="Nombre de refacción o servicio"
-                        disabled={isBudgetLocked}
-                        onChange={(e) =>
-                          setBudgetItems((prev) =>
-                            prev.map((b, i) =>
-                              i === idx
-                                ? { ...b, description: e.target.value }
-                                : b,
-                            ),
-                          )
-                        }
-                        className="h-8 flex-1 border border-north-border px-2 text-xs"
-                      />
-                      <select
-                        value={item.type}
-                        disabled={isBudgetLocked}
-                        onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, type: e.target.value as WorkshopBudgetItem["type"] } : b))}
-                        className="h-8 border border-north-border bg-white px-1 text-xs"
-                        aria-label={`Tipo de línea ${idx + 1}`}
-                      >
-                        <option value="refaccion">Refacción</option>
-                        <option value="servicio">Servicio</option>
-                      </select>
-                      <input
-                        type="number"
-                        min={1}
-                        step={1}
-                        value={item.quantity || ""}
-                        disabled={isBudgetLocked}
-                        onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))}
-                        className="h-8 border border-north-border px-2 text-xs"
-                        aria-label={`Cantidad de línea ${idx + 1}`}
-                      />
-                      <input
-                        type="number"
-                        value={item.price || ""}
-                        disabled={isBudgetLocked}
-                        onChange={(e) =>
-                          setBudgetItems((prev) =>
-                            prev.map((b, i) =>
-                              i === idx
-                                ? { ...b, price: Number(e.target.value) || 0 }
-                                : b,
-                            ),
-                          )
-                        }
-                        className="h-8 w-20 border border-north-border px-2 text-xs"
-                      />
-                      {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-8 text-lg leading-none text-red-700" aria-label={`Eliminar línea ${idx + 1}`}>×</button>}
+                    <div key={item.id} className="mb-3 border border-north-border p-3">
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_130px_90px_120px_32px]">
+                        <input value={item.description} placeholder="Nombre de refacción o servicio" disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, description: e.target.value } : b))} className="h-9 min-w-0 border border-north-border px-2 text-sm" />
+                        <select value={item.type} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, type: e.target.value as WorkshopBudgetItem["type"], productId: e.target.value === "refaccion" ? b.productId : undefined } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Tipo de línea ${idx + 1}`}>
+                          <option value="refaccion">Refacción</option>
+                          <option value="servicio">Servicio</option>
+                        </select>
+                        <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border px-2 text-sm" aria-label={`Cantidad de línea ${idx + 1}`} />
+                        <input type="number" min={0} value={item.price || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: Number(e.target.value) || 0 } : b))} className="h-9 border border-north-border px-2 text-sm" aria-label={`Precio de línea ${idx + 1}`} />
+                        {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-9 text-lg leading-none text-red-700" aria-label={`Eliminar línea ${idx + 1}`}>×</button>}
+                      </div>
+                      {item.type === "refaccion" && <select value={item.productId ?? ""} disabled={isBudgetLocked} onChange={(e) => { const product = availableRefactions.find((p) => p.id === e.target.value); setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, productId: product?.id, description: product?.name ?? b.description, price: product?.price ?? b.price } : b)); }} className="mt-2 h-9 w-full border border-north-border bg-white px-2 text-sm">
+                        <option value="">Refacción manual</option>
+                        {availableRefactions.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku} · {formatPosPrice(product.price)}</option>)}
+                      </select>}
                     </div>
                   ))}
                   {!isBudgetLocked && <button
@@ -596,8 +583,9 @@ export default function PosTallerPage() {
                   className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 border border-north-border text-sm"
                 >
                   <Printer className="h-4 w-4" />
-                  Imprimir comprobante
+                  Imprimir ticket del taller
                 </button>
+                </div>
               </aside>
             )}
           </div>
