@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { usePos } from "@/context/PosContext";
 import { fetchSales, pendingSales, syncSales } from "@/lib/sync/sync";
+import { getAuthSession } from "@/lib/auth";
 
 // Thin status bar shown on every POS screen. Reads sales via the public usePos
 // hook (no coupling to POS internals) and pushes the pending ones to the
@@ -31,14 +32,20 @@ export function SyncBar() {
     syncingRef.current = true;
     setSyncing(true);
     setError(null);
-    const res = await syncSales(salesRef.current);
-    setPending(res.pending);
-    setError(res.ok ? null : (res.error ?? "error"));
-    try {
-      const remoteSales = await fetchSales();
-      mergeRemoteSales(remoteSales);
-    } catch (salesError) {
-      setError((salesError as Error).message || "No se pudieron descargar las ventas");
+    const role = getAuthSession()?.user.role;
+    const canSyncSales = role === "admin" || role === "cajero";
+    if (canSyncSales) {
+      const res = await syncSales(salesRef.current);
+      setPending(res.pending);
+      setError(res.ok ? null : (res.error ?? "error"));
+      try {
+        const remoteSales = await fetchSales();
+        mergeRemoteSales(remoteSales);
+      } catch (salesError) {
+        setError((salesError as Error).message || "No se pudieron descargar las ventas");
+      }
+    } else {
+      setPending(0);
     }
     await refreshCatalog();
     await syncWorkshopOrders();
