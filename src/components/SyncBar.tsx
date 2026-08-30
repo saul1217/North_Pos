@@ -27,12 +27,22 @@ export function SyncBar() {
 
   const salesRef = useRef(sales);
   salesRef.current = sales;
+  const workshopPendingRef = useRef(workshopSyncPending);
+  workshopPendingRef.current = workshopSyncPending;
+  const catalogErrorRef = useRef(catalogError);
+  catalogErrorRef.current = catalogError;
+  const workshopErrorRef = useRef(workshopError);
+  workshopErrorRef.current = workshopError;
   const syncingRef = useRef(false);
   const failureCountRef = useRef(0);
   const firstSyncShownRef = useRef(false);
 
-  const runSync = useCallback(async () => {
+  const runSync = useCallback(async (force = false) => {
     if (syncingRef.current) return;
+    const hasPendingWork = pendingSales(salesRef.current).length > 0 ||
+      workshopPendingRef.current > 0 ||
+      Boolean(catalogErrorRef.current || workshopErrorRef.current);
+    if (!force && !hasPendingWork) return;
     syncingRef.current = true;
     setSyncing(true);
     setError(null);
@@ -79,9 +89,11 @@ export function SyncBar() {
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
     setPending(pendingSales(sales).length);
+    const hasPendingWork = pendingSales(sales).length > 0 || workshopSyncPending > 0;
+    if (!hasPendingWork) return;
     const t = setTimeout(() => void runSync(), 800);
     return () => clearTimeout(t);
-  }, [sales, runSync]);
+  }, [sales, workshopSyncPending, catalogError, workshopError, runSync]);
 
   // Connection changes + periodic retry.
   useEffect(() => {
@@ -131,7 +143,7 @@ export function SyncBar() {
       )}
       <button
         type="button"
-        onClick={() => void runSync()}
+        onClick={() => void runSync(true)}
         title={syncErrorMessage ? `Error: ${syncErrorMessage}` : "Sincronizar ahora"}
         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${styles}`}
       >
