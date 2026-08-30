@@ -72,6 +72,8 @@ export default function PosTallerPage() {
   const [diagnosis, setDiagnosis] = useState("");
   const [technicalNotes, setTechnicalNotes] = useState("");
   const [budgetItems, setBudgetItems] = useState<WorkshopBudgetItem[]>([]);
+  const [refactionPickerIndex, setRefactionPickerIndex] = useState<number | null>(null);
+  const [refactionQuery, setRefactionQuery] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<"efectivo" | "tarjeta" | "transferencia">("efectivo");
   const [savingBudget, setSavingBudget] = useState(false);
   const [saveMessage, setSaveMessage] = useState("");
@@ -256,6 +258,13 @@ export default function PosTallerPage() {
   const availableRefactions = products.filter(
     (product) => product.category.toLowerCase() === "refacciones" && product.status === "activo",
   );
+  const matchingRefactions = availableRefactions.filter((product) => {
+    const query = refactionQuery.trim().toLowerCase();
+    if (!query) return true;
+    return [product.name, product.sku, product.upc, product.barcode]
+      .filter(Boolean)
+      .some((value) => value!.toLowerCase().includes(query));
+  });
 
   return (
     <>
@@ -486,10 +495,11 @@ export default function PosTallerPage() {
                       <div key={item.id} className="p-3">
                         {item.type === "refaccion" ? (
                           <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_90px_110px_32px]">
-                            <select value={item.productId ?? ""} disabled={isBudgetLocked} onChange={(e) => { const product = availableRefactions.find((p) => p.id === e.target.value); setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, productId: product?.id, description: product?.name ?? "", price: product?.price ?? 0 } : b)); }} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm">
-                              <option value="">Selecciona una refacción registrada...</option>
-                              {availableRefactions.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}
-                            </select>
+                            <button type="button" disabled={isBudgetLocked} onClick={() => { setRefactionPickerIndex(idx); setRefactionQuery(""); }} className="h-9 min-w-0 overflow-hidden border border-north-border bg-white px-2 text-left text-sm disabled:cursor-not-allowed disabled:opacity-60">
+                              <span className={item.productId ? "text-north-dark" : "text-north-muted"}>
+                                {item.productId ? `${item.description} · ${item.price ? formatPosPrice(item.price) : ""}` : "Buscar refacción registrada..."}
+                              </span>
+                            </button>
                             <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de refacción ${idx + 1}`} />
                             <div className="flex h-9 items-center border border-north-border bg-slate-100 px-2 text-sm text-north-muted" title="Precio tomado del catálogo">
                               {item.productId ? formatPosPrice(item.price) : "Precio del catálogo"}
@@ -769,6 +779,50 @@ export default function PosTallerPage() {
               >
                 Cerrar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {refactionPickerIndex !== null && (
+        <div className="pos-no-print fixed inset-0 z-50 flex items-center justify-center bg-north-dark/60 p-4">
+          <div className="flex max-h-[80vh] w-full max-w-xl flex-col bg-white shadow-xl">
+            <div className="flex items-center justify-between border-b border-north-border px-5 py-4">
+              <div>
+                <h2 className="font-display text-lg font-bold uppercase">Buscar refacción</h2>
+                <p className="mt-1 text-xs text-north-muted">Busca por nombre, SKU, UPC o código de barras.</p>
+              </div>
+              <button type="button" onClick={() => setRefactionPickerIndex(null)} className="h-10 w-10 text-2xl leading-none" aria-label="Cerrar búsqueda">×</button>
+            </div>
+            <div className="border-b border-north-border p-4">
+              <input autoFocus value={refactionQuery} onChange={(e) => setRefactionQuery(e.target.value)} placeholder="Escribe para buscar..." className="h-11 w-full border border-north-border px-3 text-sm" />
+            </div>
+            <div className="min-h-0 overflow-y-auto p-2">
+              {matchingRefactions.length === 0 ? (
+                <p className="px-3 py-8 text-center text-sm text-north-muted">No se encontraron refacciones activas.</p>
+              ) : (
+                matchingRefactions.map((product) => (
+                  <button
+                    key={product.id}
+                    type="button"
+                    onClick={() => {
+                      const idx = refactionPickerIndex;
+                      setBudgetItems((prev) => prev.map((item, itemIndex) => itemIndex === idx ? { ...item, productId: product.id, description: product.name, price: product.price } : item));
+                      setRefactionPickerIndex(null);
+                    }}
+                    className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-north-border px-3 py-2 text-left hover:bg-north-background"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold">{product.name}</span>
+                      <span className="block truncate text-xs text-north-muted">SKU: {product.sku}{product.upc ? ` · UPC: ${product.upc}` : ""}</span>
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold">{formatPosPrice(product.price)}</span>
+                  </button>
+                ))
+              )}
+            </div>
+            <div className="border-t border-north-border p-3 text-right">
+              <button type="button" onClick={() => setRefactionPickerIndex(null)} className="h-10 border border-north-border px-5 text-sm">Cancelar</button>
             </div>
           </div>
         </div>
