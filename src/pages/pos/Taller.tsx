@@ -249,6 +249,19 @@ export default function PosTallerPage() {
     setSaveMessage(`${order.folio} marcada como entregada.`);
   }
 
+  function hydrateBudgetItems(items: WorkshopBudgetItem[]) {
+    return items.map((item) => {
+      if (item.type !== "refaccion" || item.productId) return item;
+      const product = products.find((candidate) =>
+        candidate.name.toLowerCase() === item.description.toLowerCase() ||
+        candidate.sku.toLowerCase() === item.description.toLowerCase(),
+      );
+      return product
+        ? { ...item, productId: product.id, productSku: product.sku, description: product.name, price: product.price }
+        : item;
+    });
+  }
+
   function addBudgetLine() {
     setBudgetItems((prev) => [
       ...prev,
@@ -383,7 +396,7 @@ export default function PosTallerPage() {
                         setSelected(o);
                         setDiagnosis(o.diagnosis ?? "");
                         setTechnicalNotes(o.technicalNotes ?? "");
-                        setBudgetItems(o.budget?.items ?? []);
+                        setBudgetItems(hydrateBudgetItems(o.budget?.items ?? []));
                       }}
                       className="cursor-pointer border-b border-north-border hover:bg-north-background/50"
                     >
