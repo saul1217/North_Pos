@@ -58,7 +58,7 @@ export default function PosVentasPage() {
 
   return (
     <>
-      <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col lg:flex-row">
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
           <header className="border-b border-north-border bg-white px-4 py-5 md:px-6">
             <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">
@@ -77,65 +77,74 @@ export default function PosVentasPage() {
           </header>
 
           <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-            <table className="w-full min-w-[720px] text-left text-sm">
-              <thead className="border-b border-north-border bg-north-background text-xs uppercase text-north-steel">
-                <tr>
-                  <th className="px-4 py-3">Folio</th>
-                  <th className="px-4 py-3">Fecha</th>
-                  <th className="px-4 py-3">Total</th>
-                  <th className="px-4 py-3">Pago</th>
-                  <th className="px-4 py-3">Estado</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((sale) => {
-                  const date = new Date(sale.date);
-                  return (
-                    <tr
-                      key={sale.id}
-                      onClick={() => {
-                        setSelected(sale);
-                        setReturnMode(false);
-                        setShowCancel(false);
-                      }}
-                      className={`cursor-pointer border-b border-north-border hover:bg-north-background/50 ${
-                        selected?.id === sale.id ? "bg-north-primary/5" : ""
-                      }`}
-                    >
-                      <td className="px-4 py-3 font-medium">{sale.folio}</td>
-                      <td className="px-4 py-3 text-north-muted">
-                        {date.toLocaleDateString("es-MX")}
-                      </td>
-                      <td className="px-4 py-3 font-semibold text-north-primary">
-                        {formatPosPrice(sale.total)}
-                      </td>
-                      <td className="px-4 py-3">
-                        {sale.payments
-                          .map((p) => paymentMethodLabels[p.method])
-                          .join(" + ")}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span
-                          className={`px-2 py-0.5 text-[11px] font-semibold uppercase ${
-                            sale.status === "cancelada"
-                              ? "bg-red-50 text-red-700"
-                              : sale.status.includes("devuel")
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-emerald-50 text-emerald-700"
-                          }`}
-                        >
-                          {saleStatusLabels[sale.status] ?? sale.status}
-                        </span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <div className="overflow-x-auto border border-north-border bg-white">
+              <table className="w-full min-w-[680px] table-fixed text-left text-sm">
+                <colgroup>
+                  <col className="w-[19%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[17%]" />
+                  <col className="w-[25%]" />
+                  <col className="w-[22%]" />
+                </colgroup>
+                <thead className="border-b border-north-border bg-north-background text-xs uppercase tracking-[0.03em] text-north-steel">
+                  <tr>
+                    <th className="px-3 py-3 md:px-4">Folio</th>
+                    <th className="px-3 py-3 md:px-4">Fecha</th>
+                    <th className="px-3 py-3 md:px-4">Total</th>
+                    <th className="px-3 py-3 md:px-4">Pago</th>
+                    <th className="px-3 py-3 md:px-4">Estado</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {filtered.map((sale) => {
+                    const date = new Date(sale.date);
+                    return (
+                      <tr
+                        key={sale.id}
+                        onClick={() => {
+                          setSelected(sale);
+                          setReturnMode(false);
+                          setShowCancel(false);
+                        }}
+                        className={`cursor-pointer border-b border-north-border hover:bg-north-background/50 ${
+                          selected?.id === sale.id ? "bg-north-primary/5" : ""
+                        }`}
+                      >
+                        <td className="whitespace-nowrap px-3 py-3 font-medium md:px-4">{sale.folio}</td>
+                        <td className="whitespace-nowrap px-3 py-3 text-north-muted md:px-4">
+                          {date.toLocaleDateString("es-MX")}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-north-primary md:px-4">
+                          {formatPosPrice(sale.total)}
+                        </td>
+                        <td className="whitespace-nowrap px-3 py-3 md:px-4">
+                          {sale.payments
+                            .map((p) => paymentMethodLabels[p.method])
+                            .join(" + ")}
+                        </td>
+                        <td className="px-3 py-3 md:px-4">
+                          <span
+                            className={`inline-block whitespace-nowrap px-2 py-0.5 text-[11px] font-semibold uppercase ${
+                              sale.status === "cancelada"
+                                ? "bg-red-50 text-red-700"
+                                : sale.status.includes("devuel")
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-emerald-50 text-emerald-700"
+                            }`}
+                          >
+                            {saleStatusLabels[sale.status] ?? sale.status}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
 
-        <aside className="w-full border-t border-north-border bg-white lg:w-96 lg:border-l lg:border-t-0">
+        <aside className="min-h-0 w-full overflow-y-auto border-t border-north-border bg-white lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0">
           {selected ? (
             <div className="p-5">
               <h2 className="font-display text-lg font-bold uppercase">
