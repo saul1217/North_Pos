@@ -198,6 +198,7 @@ export type ChecklistEntry = {
 export type WorkshopBudgetItem = {
   id: string;
   productId?: string;
+  productSku?: string;
   description: string;
   type: "servicio" | "refaccion";
   quantity: number;

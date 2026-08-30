@@ -862,7 +862,7 @@ export default function PosTallerPage() {
                     type="button"
                     onClick={() => {
                       const idx = refactionPickerIndex;
-                      setBudgetItems((prev) => prev.map((item, itemIndex) => itemIndex === idx ? { ...item, productId: product.id, description: product.name, price: product.price } : item));
+                      setBudgetItems((prev) => prev.map((item, itemIndex) => itemIndex === idx ? { ...item, productId: product.id, productSku: product.sku, description: product.name, price: product.price } : item));
                       setRefactionPickerIndex(null);
                     }}
                     className="flex min-h-12 w-full items-center justify-between gap-3 border-b border-north-border px-3 py-2 text-left hover:bg-north-background"
