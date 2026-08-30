@@ -481,24 +481,32 @@ export default function PosTallerPage() {
                       </button>
                     </div>}
                   </div>
-                  {budgetItems.map((item, idx) => (
-                    <div key={item.id} className="mb-3 border border-north-border p-3">
-                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_130px_90px_120px_32px]">
-                        <input value={item.description} placeholder="Nombre de refacción o servicio" disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, description: e.target.value } : b))} className="h-9 min-w-0 border border-north-border px-2 text-sm" />
-                        <select value={item.type} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, type: e.target.value as WorkshopBudgetItem["type"], productId: e.target.value === "refaccion" ? b.productId : undefined } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Tipo de línea ${idx + 1}`}>
-                          <option value="refaccion">Refacción</option>
-                          <option value="servicio">Servicio</option>
-                        </select>
-                        <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border px-2 text-sm" aria-label={`Cantidad de línea ${idx + 1}`} />
-                        <input type="number" min={0} value={item.price || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: Number(e.target.value) || 0 } : b))} className="h-9 border border-north-border px-2 text-sm" aria-label={`Precio de línea ${idx + 1}`} />
-                        {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-9 text-lg leading-none text-red-700" aria-label={`Eliminar línea ${idx + 1}`}>×</button>}
+                  {budgetItems.length > 0 && <div className="max-h-72 overflow-y-auto divide-y divide-north-border border border-north-border bg-north-background/30">
+                    {budgetItems.map((item, idx) => (
+                      <div key={item.id} className="p-3">
+                        {item.type === "refaccion" ? (
+                          <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_90px_110px_32px]">
+                            <select value={item.productId ?? ""} disabled={isBudgetLocked} onChange={(e) => { const product = availableRefactions.find((p) => p.id === e.target.value); setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, productId: product?.id, description: product?.name ?? "", price: product?.price ?? 0 } : b)); }} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm">
+                              <option value="">Selecciona una refacción registrada...</option>
+                              {availableRefactions.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku}</option>)}
+                            </select>
+                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de refacción ${idx + 1}`} />
+                            <div className="flex h-9 items-center border border-north-border bg-slate-100 px-2 text-sm text-north-muted" title="Precio tomado del catálogo">
+                              {item.productId ? formatPosPrice(item.price) : "Precio del catálogo"}
+                            </div>
+                            {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-9 text-lg leading-none text-red-700" aria-label={`Eliminar refacción ${idx + 1}`}>×</button>}
+                          </div>
+                        ) : (
+                          <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_90px_110px_32px]">
+                            <input value={item.description} placeholder="Describe el trabajo manual" disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, description: e.target.value } : b))} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm" />
+                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de trabajo ${idx + 1}`} />
+                            <input type="number" min={0} value={item.price || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: Number(e.target.value) || 0 } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Precio del trabajo ${idx + 1}`} placeholder="Precio" />
+                            {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-9 text-lg leading-none text-red-700" aria-label={`Eliminar trabajo ${idx + 1}`}>×</button>}
+                          </div>
+                        )}
                       </div>
-                      {item.type === "refaccion" && <select value={item.productId ?? ""} disabled={isBudgetLocked} onChange={(e) => { const product = availableRefactions.find((p) => p.id === e.target.value); setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, productId: product?.id, description: product?.name ?? b.description, price: product?.price ?? b.price } : b)); }} className="mt-2 h-9 w-full border border-north-border bg-white px-2 text-sm">
-                        <option value="">Refacción manual</option>
-                        {availableRefactions.map((product) => <option key={product.id} value={product.id}>{product.name} · {product.sku} · {formatPosPrice(product.price)}</option>)}
-                      </select>}
-                    </div>
-                  ))}
+                    ))}
+                  </div>}
                   {!isBudgetLocked && <button
                     type="button"
                     disabled={savingBudget}
