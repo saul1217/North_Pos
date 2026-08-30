@@ -1,23 +1,21 @@
 import type { WorkshopOrder } from "@/lib/pos/types";
-import { defaultReceptionChecklist } from "@/lib/pos/data/checklist";
 import Image from "next/image";
 
 export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
   const date = new Date(order.receivedAt);
-  const checklistItems = defaultReceptionChecklist;
 
   return (
     <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
         <Image
-          src="/brand/logo.png"
+          src="/public/brand/logo.png"
           alt="North Bike"
           width={56}
           height={56}
           className="mx-auto mb-2 h-12 w-12 object-contain"
         />
         <p className="font-display text-lg font-bold uppercase">North Bike</p>
-        <p className="text-xs">Ticket del taller</p>
+        <p className="text-xs">Ticket final del taller</p>
         <p className="text-[10px] text-gray-500">No fiscal</p>
       </div>
 
@@ -31,8 +29,8 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
           <span>{date.toLocaleString("es-MX")}</span>
         </div>
         <div className="flex justify-between">
-          <span>Estado</span>
-          <span className="capitalize">{order.status}</span>
+          <span>Pago</span>
+          <span className="font-semibold">Confirmado</span>
         </div>
       </div>
 
@@ -63,33 +61,9 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
         </div>
       )}
 
-      <div className="mt-3 text-xs">
-        <p className="mb-1 font-semibold">Checklist de recepción</p>
-        <ul className="space-y-1">
-          {checklistItems.map((item) => {
-            const entry = order.checklist.find((c) => c.itemId === item.id);
-            return (
-              <li key={item.id} className="flex justify-between">
-                <span>
-                  {item.name}
-                  {item.required && " *"}
-                </span>
-                <span className="uppercase">{entry?.status ?? "—"}</span>
-              </li>
-            );
-          })}
-        </ul>
-      </div>
-
-      {order.photos.length > 0 && (
-        <p className="mt-3 text-xs text-gray-600">
-          {order.photos.length} fotografía(s) registradas en la orden
-        </p>
-      )}
-
       {order.budget && (
         <div className="mt-3 border-t border-gray-200 pt-2 text-xs">
-          <p className="font-semibold">Presupuesto: {order.budget.status}</p>
+          <p className="font-semibold">Detalle del servicio</p>
           <div className="mt-2 space-y-1">
             {order.budget.items.map((item) => (
               <div key={item.id} className="flex justify-between gap-3">
@@ -106,7 +80,7 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
       )}
 
       <p className="mt-6 text-center text-xs text-gray-600">
-        Conserva este comprobante para seguimiento en taller.
+        Gracias por tu preferencia.
       </p>
     </div>
   );

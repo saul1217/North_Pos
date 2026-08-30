@@ -595,14 +595,14 @@ export default function PosTallerPage() {
                   </p>
                 )}
 
-                <button
+                {selected.paymentStatus === "pagada" && <button
                   type="button"
                   onClick={() => setPrintOrder(selected)}
                   className="mt-4 inline-flex h-10 w-full items-center justify-center gap-2 border border-north-border text-sm"
                 >
                   <Printer className="h-4 w-4" />
-                  Imprimir ticket del taller
-                </button>
+                  Imprimir ticket final
+                </button>}
                 </div>
               </aside>
             )}
