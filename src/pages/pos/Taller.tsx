@@ -177,6 +177,11 @@ export default function PosTallerPage() {
     if (!selected) return;
     setSavingBudget(true);
     setFormError("");
+    if (budgetItems.some((item) => !item.description.trim() || item.quantity <= 0 || item.price < 0)) {
+      setFormError("Cada línea necesita una descripción, cantidad y precio válidos.");
+      setSavingBudget(false);
+      return;
+    }
     const subtotal = budgetItems.reduce(
       (s, i) => s + i.price * i.quantity,
       0,
@@ -440,19 +445,23 @@ export default function PosTallerPage() {
                     <p className="text-xs font-semibold uppercase text-north-steel">
                       Presupuesto
                     </p>
+                    <p className="mr-2 text-[11px] text-north-muted">
+                      Puedes agregar refacciones registradas o trabajos manuales sin afectar el inventario.
+                    </p>
                     <button
                       type="button"
                       disabled={isBudgetLocked}
                       onClick={addBudgetLine}
                       className="text-xs text-north-primary disabled:text-north-muted"
                     >
-                      + Línea
+                      + Concepto manual
                     </button>
                   </div>
                   {budgetItems.map((item, idx) => (
-                    <div key={item.id} className="mb-2 flex gap-1">
+                    <div key={item.id} className="mb-2 grid grid-cols-[minmax(0,1fr)_100px_64px_32px] gap-1">
                       <input
                         value={item.description}
+                        placeholder="Nombre de refacción o servicio"
                         disabled={isBudgetLocked}
                         onChange={(e) =>
                           setBudgetItems((prev) =>
@@ -464,6 +473,26 @@ export default function PosTallerPage() {
                           )
                         }
                         className="h-8 flex-1 border border-north-border px-2 text-xs"
+                      />
+                      <select
+                        value={item.type}
+                        disabled={isBudgetLocked}
+                        onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, type: e.target.value as WorkshopBudgetItem["type"] } : b))}
+                        className="h-8 border border-north-border bg-white px-1 text-xs"
+                        aria-label={`Tipo de línea ${idx + 1}`}
+                      >
+                        <option value="refaccion">Refacción</option>
+                        <option value="servicio">Servicio</option>
+                      </select>
+                      <input
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={item.quantity || ""}
+                        disabled={isBudgetLocked}
+                        onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))}
+                        className="h-8 border border-north-border px-2 text-xs"
+                        aria-label={`Cantidad de línea ${idx + 1}`}
                       />
                       <input
                         type="number"
@@ -480,6 +509,7 @@ export default function PosTallerPage() {
                         }
                         className="h-8 w-20 border border-north-border px-2 text-xs"
                       />
+                      {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-8 text-lg leading-none text-red-700" aria-label={`Eliminar línea ${idx + 1}`}>×</button>}
                     </div>
                   ))}
                   {!isBudgetLocked && <button

@@ -2,8 +2,8 @@ import type { AuthUser } from "@/lib/auth";
 
 const rolePaths: Record<AuthUser["role"], string[]> = {
   admin: ["/pos/"],
-  cajero: ["/pos/venta", "/pos/productos", "/pos/ventas", "/pos/apartados", "/pos/cotizaciones", "/pos/taller", "/pos/codigos-barras"],
-  taller: ["/pos/taller", "/pos/productos", "/pos/inventario"],
+  cajero: ["/pos/venta", "/pos/productos", "/pos/refacciones", "/pos/ventas", "/pos/apartados", "/pos/cotizaciones", "/pos/taller", "/pos/codigos-barras"],
+  taller: ["/pos/taller", "/pos/productos", "/pos/refacciones", "/pos/inventario"],
 };
 
 export function canAccess(role: AuthUser["role"], pathname: string) {

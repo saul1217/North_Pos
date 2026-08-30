@@ -3,6 +3,16 @@
   overflow: hidden;
 }
 
+button:not(:disabled),
+[role="button"],
+a {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+}
+
 @media print {
   body * {
     visibility: hidden;

@@ -89,10 +89,19 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
 
       {order.budget && (
         <div className="mt-3 border-t border-gray-200 pt-2 text-xs">
-          <p className="font-semibold">
-            Presupuesto: {order.budget.status} — $
-            {order.budget.total.toLocaleString("es-MX")}
-          </p>
+          <p className="font-semibold">Presupuesto: {order.budget.status}</p>
+          <div className="mt-2 space-y-1">
+            {order.budget.items.map((item) => (
+              <div key={item.id} className="flex justify-between gap-3">
+                <span>{item.quantity} × {item.description} <span className="text-gray-500">({item.type === "refaccion" ? "Refacción" : "Servicio"})</span></span>
+                <span>${(item.quantity * item.price).toLocaleString("es-MX")}</span>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 flex justify-between border-t border-gray-200 pt-1 font-semibold">
+            <span>Total</span>
+            <span>${order.budget.total.toLocaleString("es-MX")}</span>
+          </div>
         </div>
       )}
 

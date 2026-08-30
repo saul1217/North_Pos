@@ -10,6 +10,7 @@ import {
   FileText,
   LineChart,
   Package,
+  Cog,
   Receipt,
   ShoppingCart,
   Wrench,
@@ -24,6 +25,7 @@ import { allowedPaths } from "@/lib/permissions";
 const nav = [
   { href: "/pos/venta", label: "Venta", icon: ShoppingCart },
   { href: "/pos/productos", label: "Productos", icon: Package },
+  { href: "/pos/refacciones", label: "Refacciones", icon: Cog },
   { href: "/pos/inventario", label: "Inventario", icon: Boxes },
   { href: "/pos/ventas", label: "Ventas", icon: Receipt },
   { href: "/pos/apartados", label: "Apartados", icon: ClipboardList },

@@ -191,6 +191,7 @@ export const categoryLabels: Record<string, string> = {
   jerseys: "Jerseys",
   accesorios: "Accesorios",
   herramientas: "Herramientas",
+  refacciones: "Refacciones",
 };
 
 export function getCategoryLabel(category: string): string {

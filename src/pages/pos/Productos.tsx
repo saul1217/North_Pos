@@ -71,7 +71,7 @@ function formFromProduct(product: PosProduct): ProductForm {
   };
 }
 
-export default function PosProductosPage() {
+export default function PosProductosPage({ onlyCategory, title = "Productos" }: { onlyCategory?: string; title?: string }) {
   const {
     products,
     catalogLoading,
@@ -109,8 +109,9 @@ export default function PosProductosPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return products;
-    return products.filter(
+    const source = onlyCategory ? products.filter((product) => product.category === onlyCategory) : products;
+    if (!q) return source;
+    return source.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
@@ -118,7 +119,7 @@ export default function PosProductosPage() {
         p.barcode.toLowerCase().includes(q) ||
         getCategoryLabel(p.category).toLowerCase().includes(q),
     );
-  }, [products, query]);
+  }, [products, query, onlyCategory]);
 
   const categoryOptions = useMemo(() => {
     const options = new Map(Object.entries(categoryLabels));
@@ -286,7 +287,7 @@ export default function PosProductosPage() {
 
   function openCreate() {
     setEditing(null);
-    setForm(emptyForm);
+    setForm({ ...emptyForm, category: onlyCategory ?? emptyForm.category });
     setImageFile(null);
     setImageFiles([]);
     setFormError(null);
@@ -428,10 +429,10 @@ export default function PosProductosPage() {
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">
-              Productos
+              {title}
             </h1>
             <p className="mt-1 text-sm text-north-muted">
-              Catálogo interno con SKU, variantes y series
+              {onlyCategory ? "Refacciones y piezas disponibles para el taller" : "Catálogo interno con SKU, variantes y series"}
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -570,10 +571,10 @@ export default function PosProductosPage() {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
-                          <button type="button" onClick={() => void toggleStatus(product)} disabled={statusSaving === product.id} className="inline-flex h-9 items-center gap-1 px-2 text-xs font-semibold text-north-primary hover:bg-north-background disabled:opacity-50" aria-label={`${product.status === "activo" ? "Desactivar" : "Activar"} ${product.name}`}>
+                          {canManageProducts && <button type="button" onClick={() => void toggleStatus(product)} disabled={statusSaving === product.id} className="inline-flex h-9 items-center gap-1 px-2 text-xs font-semibold text-north-primary hover:bg-north-background disabled:opacity-50" aria-label={`${product.status === "activo" ? "Desactivar" : "Activar"} ${product.name}`}>
                             <Eye className="h-4 w-4" />
                             {statusSaving === product.id ? "Guardando" : product.status === "activo" ? "Desactivar" : "Activar"}
-                          </button>
+                          </button>}
                           {canManageProducts && (
                             <>
                               <button type="button" onClick={() => openEdit(product)} className="p-2 text-north-muted" aria-label={`Editar ${product.name}`}>
@@ -650,7 +651,7 @@ export default function PosProductosPage() {
         </div>
         {filtered.length === 0 && (
           <div className="border-x border-b border-north-border bg-white px-6 py-12 text-center text-sm text-north-muted">
-            {query ? "No hay productos que coincidan con la búsqueda." : "Aún no hay productos. Crea el primero para comenzar a vender."}
+            {query ? "No hay productos que coincidan con la búsqueda." : onlyCategory ? "Aún no hay refacciones registradas." : "Aún no hay productos. Crea el primero para comenzar a vender."}
           </div>
         )}
       </div>

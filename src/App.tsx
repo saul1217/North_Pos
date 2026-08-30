@@ -3,6 +3,7 @@ import { PosLayout } from "@/layouts/PosLayout";
 import Venta from "@/pages/pos/Venta";
 import Inventario from "@/pages/pos/Inventario";
 import Productos from "@/pages/pos/Productos";
+import Refacciones from "@/pages/pos/Refacciones";
 import Ventas from "@/pages/pos/Ventas";
 import Apartados from "@/pages/pos/Apartados";
 import Cotizaciones from "@/pages/pos/Cotizaciones";
@@ -24,6 +25,7 @@ export function App() {
           <Route path="venta" element={<Venta />} />
           <Route path="inventario" element={<Inventario />} />
           <Route path="productos" element={<Productos />} />
+          <Route path="refacciones" element={<Refacciones />} />
           <Route path="ventas" element={<Ventas />} />
           <Route path="apartados" element={<Apartados />} />
           <Route path="cotizaciones" element={<Cotizaciones />} />
