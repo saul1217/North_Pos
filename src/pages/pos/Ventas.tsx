@@ -76,23 +76,23 @@ export default function PosVentasPage() {
             </div>
           </header>
 
-          <div className="min-h-0 flex-1 overflow-auto p-4 md:p-6">
-            <div className="overflow-x-auto border border-north-border bg-white">
-              <table className="w-full min-w-[680px] table-fixed text-left text-sm">
+          <div className="min-h-0 flex-1 overflow-y-auto overflow-x-hidden p-4 md:p-6">
+            <div className="min-w-0 max-w-full overflow-hidden border border-north-border bg-white">
+              <table className="w-full table-fixed text-left text-sm">
                 <colgroup>
+                  <col className="w-[21%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[18%]" />
+                  <col className="w-[24%]" />
                   <col className="w-[19%]" />
-                  <col className="w-[17%]" />
-                  <col className="w-[17%]" />
-                  <col className="w-[25%]" />
-                  <col className="w-[22%]" />
                 </colgroup>
                 <thead className="border-b border-north-border bg-north-background text-xs uppercase tracking-[0.03em] text-north-steel">
                   <tr>
-                    <th className="px-3 py-3 md:px-4">Folio</th>
-                    <th className="px-3 py-3 md:px-4">Fecha</th>
-                    <th className="px-3 py-3 md:px-4">Total</th>
-                    <th className="px-3 py-3 md:px-4">Pago</th>
-                    <th className="px-3 py-3 md:px-4">Estado</th>
+                    <th className="px-2 py-3 md:px-3">Folio</th>
+                    <th className="px-2 py-3 md:px-3">Fecha</th>
+                    <th className="px-2 py-3 md:px-3">Total</th>
+                    <th className="px-2 py-3 md:px-3">Pago</th>
+                    <th className="px-2 py-3 md:px-3">Estado</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -110,21 +110,21 @@ export default function PosVentasPage() {
                           selected?.id === sale.id ? "bg-north-primary/5" : ""
                         }`}
                       >
-                        <td className="whitespace-nowrap px-3 py-3 font-medium md:px-4">{sale.folio}</td>
-                        <td className="whitespace-nowrap px-3 py-3 text-north-muted md:px-4">
+                        <td className="break-words px-2 py-3 font-medium md:px-3">{sale.folio}</td>
+                        <td className="px-2 py-3 text-north-muted md:px-3">
                           {date.toLocaleDateString("es-MX")}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-3 font-semibold text-north-primary md:px-4">
+                        <td className="px-2 py-3 font-semibold text-north-primary md:px-3">
                           {formatPosPrice(sale.total)}
                         </td>
-                        <td className="whitespace-nowrap px-3 py-3 md:px-4">
+                        <td className="break-words px-2 py-3 leading-tight md:px-3">
                           {sale.payments
                             .map((p) => paymentMethodLabels[p.method])
                             .join(" + ")}
                         </td>
-                        <td className="px-3 py-3 md:px-4">
+                        <td className="px-2 py-3 md:px-3">
                           <span
-                            className={`inline-block whitespace-nowrap px-2 py-0.5 text-[11px] font-semibold uppercase ${
+                            className={`inline-block max-w-full break-words px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-4 ${
                               sale.status === "cancelada"
                                 ? "bg-red-50 text-red-700"
                                 : sale.status.includes("devuel")
@@ -144,7 +144,7 @@ export default function PosVentasPage() {
           </div>
         </div>
 
-        <aside className="min-h-0 w-full overflow-y-auto border-t border-north-border bg-white lg:w-96 lg:shrink-0 lg:border-l lg:border-t-0">
+        <aside className="min-h-0 w-full overflow-y-auto border-t border-north-border bg-white lg:w-80 lg:shrink-0 lg:border-l lg:border-t-0 xl:w-96">
           {selected ? (
             <div className="p-5">
               <h2 className="font-display text-lg font-bold uppercase">
