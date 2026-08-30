@@ -316,7 +316,11 @@ export default function PosTallerPage() {
             {!isCashier && (
               <button
                 type="button"
-                onClick={() => setView(view === "list" ? "new" : "list")}
+                onClick={() => {
+                  setView(view === "list" ? "new" : "list");
+                  setSelected(null);
+                  setSaveMessage("");
+                }}
                 className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
               >
                 {view === "list" ? (
@@ -347,6 +351,7 @@ export default function PosTallerPage() {
                 onClick={() => {
                   setOrderFilter(filter);
                   setSelected(null);
+                  setSaveMessage("");
                 }}
                 className={`border-b-2 px-3 py-2 text-sm font-semibold ${
                   orderFilter === filter
@@ -394,6 +399,7 @@ export default function PosTallerPage() {
                       key={o.id}
                       onClick={() => {
                         setSelected(o);
+                        setSaveMessage("");
                         setDiagnosis(o.diagnosis ?? "");
                         setTechnicalNotes(o.technicalNotes ?? "");
                         setBudgetItems(hydrateBudgetItems(o.budget?.items ?? []));
@@ -460,7 +466,10 @@ export default function PosTallerPage() {
                 <div className="mx-auto w-full max-w-5xl">
                 <button
                   type="button"
-                  onClick={() => setSelected(null)}
+                  onClick={() => {
+                    setSelected(null);
+                    setSaveMessage("");
+                  }}
                   className="mb-5 h-10 border border-north-border px-4 text-sm font-semibold"
                 >
                   ← Volver a órdenes
