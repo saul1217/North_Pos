@@ -429,20 +429,18 @@ export function PosProvider({ children }: { children: ReactNode }) {
     }
     const product = makeLocalProduct(input);
     persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
-    try {
-      const remoteProduct = await createProductApi(input);
-      persist({
-        products: [...store.products.filter((item) => item.id !== product.id && item.sku !== remoteProduct.sku), remoteProduct]
-          .sort((a, b) => a.name.localeCompare(b.name)),
-      });
-      await refreshCatalog();
-      return remoteProduct;
-    } catch {
-      // La copia local conserva el producto para sincronizarlo al recuperar
-      // la conexión, sin impedir el trabajo del POS.
-      await refreshCatalog();
-      return product;
-    }
+    // La copia local es inmediata. La confirmación remota no debe bloquear el
+    // formulario; al terminar reemplazamos el id local por el canónico.
+    void createProductApi(input)
+      .then((remoteProduct) => {
+        persist({
+          products: [...store.products.filter((item) => item.id !== product.id && item.sku !== remoteProduct.sku), remoteProduct]
+            .sort((a, b) => a.name.localeCompare(b.name)),
+        });
+        void refreshCatalog();
+      })
+      .catch(() => void refreshCatalog());
+    return product;
   }, [refreshCatalog]);
 
   const updateProduct = useCallback(async (id: string, input: ProductInput) => {
@@ -453,15 +451,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (!current) throw new Error("El producto ya no existe.");
     const product = makeLocalProduct(input, current);
     persist({ products: store.products.map((item) => item.id === id ? product : item) });
-    try {
-      const remoteProduct = await updateProductApi(id, input);
-      persist({ products: store.products.map((item) => item.id === id ? remoteProduct : item) });
-      await refreshCatalog();
-      return remoteProduct;
-    } catch {
-      await refreshCatalog();
-      return product;
-    }
+    void updateProductApi(id, input)
+      .then((remoteProduct) => {
+        persist({ products: store.products.map((item) => item.id === id ? remoteProduct : item) });
+        void refreshCatalog();
+      })
+      .catch(() => void refreshCatalog());
+    return product;
   }, [refreshCatalog]);
 
   const deleteProduct = useCallback(async (id: string) => {
@@ -473,14 +469,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
       products: store.products.filter((product) => product.id !== id),
       deletedProductIds,
     });
-    try {
-      await deleteProductApi(id);
-      await refreshCatalog();
-    } catch (error) {
-      // La marca local queda pendiente y se enviará automáticamente al volver
-      // la conexión; por eso el producto no reaparece.
-      setCatalogError((error as Error).message);
-    }
+    void deleteProductApi(id)
+      .then(() => void refreshCatalog())
+      .catch((error) => setCatalogError((error as Error).message));
   }, [refreshCatalog]);
 
   const mergeRemoteSales = useCallback((remoteSales: CompletedSale[]) => {

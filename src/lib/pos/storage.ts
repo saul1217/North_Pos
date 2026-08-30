@@ -52,6 +52,16 @@ function writeRawState(raw: string): void {
   localStorage.setItem(POS_STATE_KEY, raw);
 }
 
+let pendingState: PosPersistedState | null = null;
+let saveScheduled = false;
+
+function flushPendingState(): void {
+  saveScheduled = false;
+  const state = pendingState;
+  pendingState = null;
+  if (state) writeRawState(JSON.stringify(state));
+}
+
 function normalizeProductIdentifiers(product: PosProduct): PosProduct {
   const legacyUpc = product.upc ?? (product.barcode && product.barcode !== product.sku ? product.barcode : "");
   return {
@@ -86,7 +96,14 @@ export function loadPosState(): PosPersistedState {
 
 export function savePosState(state: PosPersistedState): void {
   if (typeof window === "undefined") return;
-  writeRawState(JSON.stringify(state));
+  // Las acciones del POS pueden disparar varios cambios consecutivos. Sólo
+  // persistimos el último estado del ciclo para no bloquear la interfaz con
+  // serializaciones e IPC repetidos.
+  pendingState = state;
+  if (!saveScheduled) {
+    saveScheduled = true;
+    window.setTimeout(flushPendingState, 40);
+  }
 }
 
 export function nextFolio(state: PosPersistedState): string {
