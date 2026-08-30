@@ -78,7 +78,7 @@ function sharedStringTable(rows: Cell[][]): { values: string[]; indexes: Map<str
   const values: string[] = [];
   const indexes = new Map<string, number>();
   rows.flat().forEach((cell) => {
-    if (typeof cell !== "string" || indexes.has(cell)) return;
+    if (typeof cell !== "string" || cell === "" || indexes.has(cell)) return;
     indexes.set(cell, values.length);
     values.push(cell);
   });
@@ -100,8 +100,25 @@ function buildSheet(rows: Cell[][], shared: Map<string, number>, config: SheetCo
   const sheetRows = rows.map((row, rowIndex) => {
     const cells = row.map((cell, columnIndex) => {
       const ref = `${columnName(columnIndex)}${rowIndex + 1}`;
-      const style = rowIndex === 0 ? 1 : rowIndex === 5 ? 2 : rowIndex === 3 && [0, 2].includes(columnIndex) ? 1 : rowIndex === 3 && [1, 3].includes(columnIndex) ? (currencyColumns.includes(columnIndex) ? 3 : 0) : currencyColumns.includes(columnIndex) ? 3 : quantityColumns.includes(columnIndex) ? 4 : 0;
+      const style = rowIndex === 0
+        ? 1
+        : rowIndex === 5
+          ? 2
+          : rowIndex === 3 && [0, 2].includes(columnIndex)
+            ? 6
+            : rowIndex === 3 && columnIndex === 3 && config.columnCount === EXPORT_COLUMN_COUNT
+              ? 3
+              : rowIndex === 3
+                ? 4
+                : rowIndex >= 6 && currencyColumns.includes(columnIndex)
+                  ? 3
+                  : rowIndex >= 6 && quantityColumns.includes(columnIndex)
+                    ? 4
+                    : rowIndex >= 6
+                      ? 5
+                      : 0;
       if (typeof cell === "number") return `<c r="${ref}" s="${style}"><v>${cell}</v></c>`;
+      if (cell === "") return `<c r="${ref}" s="${style}"/>`;
       return `<c r="${ref}" s="${style}" t="s"><v>${shared.get(cell) ?? 0}</v></c>`;
     }).join("");
     const height = rowIndex === 0 ? ` ht="25" customHeight="1"` : rowIndex === 5 ? ` ht="34" customHeight="1"` : "";
@@ -111,7 +128,7 @@ function buildSheet(rows: Cell[][], shared: Map<string, number>, config: SheetCo
 }
 
 function buildStyles(): string {
-  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts><fonts count="2"><font><sz val="10"/><name val="Arial"/></font><font><b/><sz val="11"/><name val="Arial"/></font></fonts><fills count="3"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF20566A"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left/><right/><top/><bottom style="thin"><color rgb="FFD9E2E7"/></bottom><diagonal/></border></borders><cellXfs count="5"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="0" applyFont="1" applyFill="1"><alignment horizontal="left"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1"><alignment horizontal="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf><xf numFmtId="1" fontId="0" fillId="0" borderId="0" applyNumberFormat="1"><alignment horizontal="right"/></xf></cellXfs></styleSheet>`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?><styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><numFmts count="1"><numFmt numFmtId="164" formatCode="&quot;$&quot;#,##0.00"/></numFmts><fonts count="3"><font><sz val="10"/><name val="Arial"/></font><font><b/><color rgb="FFFFFFFF"/><sz val="11"/><name val="Arial"/></font><font><b/><color rgb="FF081319"/><sz val="10"/><name val="Arial"/></font></fonts><fills count="4"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill><fill><patternFill patternType="solid"><fgColor rgb="FF20566A"/><bgColor indexed="64"/></patternFill></fill><fill><patternFill patternType="solid"><fgColor rgb="FFEAF0F3"/><bgColor indexed="64"/></patternFill></fill></fills><borders count="2"><border><left/><right/><top/><bottom/><diagonal/></border><border><left style="thin"><color rgb="FFD1DCE2"/></left><right style="thin"><color rgb="FFD1DCE2"/></right><top style="thin"><color rgb="FFD1DCE2"/></top><bottom style="thin"><color rgb="FFD1DCE2"/></bottom><diagonal/></border></borders><cellXfs count="7"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="left" vertical="center"/></xf><xf numFmtId="0" fontId="1" fillId="2" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment horizontal="center" vertical="center" wrapText="1"/></xf><xf numFmtId="164" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="1" fontId="0" fillId="0" borderId="1" applyNumberFormat="1" applyBorder="1"><alignment horizontal="right" vertical="center"/></xf><xf numFmtId="0" fontId="0" fillId="0" borderId="1" applyBorder="1"><alignment vertical="center"/></xf><xf numFmtId="0" fontId="2" fillId="3" borderId="1" applyFont="1" applyFill="1" applyBorder="1"><alignment vertical="center"/></xf></cellXfs></styleSheet>`;
 }
 
 function buildWorkbook(salesRows: Cell[][], movementRows: Cell[][]): Uint8Array {
@@ -205,7 +222,7 @@ function movementRows(movements: InventoryMovement[], bounds: SalesExportBounds)
 }
 
 export function downloadSalesXlsx(sales: CompletedSale[], bounds: SalesExportBounds, movements: InventoryMovement[]): void {
-  const bytes = buildWorkbook(exportRows(sales, bounds), movementRows(movements, bounds));
+  const bytes = createSalesXlsxBytes(sales, bounds, movements);
   const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
@@ -214,4 +231,12 @@ export function downloadSalesXlsx(sales: CompletedSale[], bounds: SalesExportBou
   link.download = `northbike-ventas-${safeLabel}.xlsx`;
   link.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+export function createSalesXlsxBytes(
+  sales: CompletedSale[],
+  bounds: SalesExportBounds,
+  movements: InventoryMovement[],
+): Uint8Array {
+  return buildWorkbook(exportRows(sales, bounds), movementRows(movements, bounds));
 }
