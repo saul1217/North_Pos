@@ -35,6 +35,7 @@ export default function PosTallerPage() {
     updateWorkshopOrder,
     updateWorkshopBudget,
     payWorkshopOrder,
+    refreshCatalog,
     workshopLoading,
     workshopError,
     refreshWorkshopOrders,
@@ -214,6 +215,7 @@ export default function PosTallerPage() {
     try {
       const updated = await payWorkshopOrder(selected.id, paymentMethod);
       setSelected(updated);
+      void refreshCatalog();
       setSaveMessage("Pago registrado correctamente.");
     } catch (error) {
       setFormError((error as Error).message);
