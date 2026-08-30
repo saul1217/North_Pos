@@ -74,6 +74,7 @@ export function SyncBar() {
 
   const totalPending = pending + workshopSyncPending;
   const hasSyncError = Boolean(error || catalogError);
+  const syncErrorMessage = error || catalogError;
   const state = !online ? "offline" : totalPending > 0 || hasSyncError ? "pending" : "synced";
   const styles = {
     offline: "border-red-200 bg-red-50 text-red-700",
@@ -92,11 +93,16 @@ export function SyncBar() {
   const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
 
   return (
-    <div className="pos-no-print flex shrink-0 items-center justify-end border-b border-north-border bg-white px-4 py-1.5">
+    <div className="pos-no-print flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-north-border bg-white px-4 py-1.5">
+      {hasSyncError && (
+        <span className="max-w-[min(70vw,520px)] truncate text-[11px] text-red-700" title={syncErrorMessage ?? undefined}>
+          Motivo: {syncErrorMessage}
+        </span>
+      )}
       <button
         type="button"
         onClick={() => void runSync()}
-        title={error || catalogError ? `Error: ${error || catalogError}` : "Sincronizar ahora"}
+        title={syncErrorMessage ? `Error: ${syncErrorMessage}` : "Sincronizar ahora"}
         className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-medium transition ${styles}`}
       >
         {syncing ? (
