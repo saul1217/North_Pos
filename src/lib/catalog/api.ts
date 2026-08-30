@@ -60,9 +60,26 @@ export function fetchProductSync(): Promise<ProductSyncState> {
 }
 
 export function syncProducts(input: ProductSyncState): Promise<ProductSyncState> {
+  const products = input.products.map((product) => {
+    const { createdAt: _createdAt, deletedAt: _deletedAt, variants, serialUnits, ...cleanProduct } = product as PosProduct & {
+      createdAt?: string;
+      deletedAt?: string;
+    };
+    return {
+      ...cleanProduct,
+      variants: variants.map((variant) => {
+        const { createdAt: _variantCreatedAt, updatedAt: _variantUpdatedAt, ...cleanVariant } = variant as typeof variant & { createdAt?: string; updatedAt?: string };
+        return cleanVariant;
+      }),
+      serialUnits: serialUnits.map((unit) => {
+        const { createdAt: _unitCreatedAt, updatedAt: _unitUpdatedAt, ...cleanUnit } = unit as typeof unit & { createdAt?: string; updatedAt?: string };
+        return cleanUnit;
+      }),
+    };
+  });
   return request<ProductSyncState>("/api/products/sync", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify({ ...input, products }),
   });
 }
 
