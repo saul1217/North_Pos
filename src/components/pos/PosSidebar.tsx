@@ -19,8 +19,7 @@ import {
   Printer,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth";
-import { allowedPaths, isModuleEnabled } from "@/lib/permissions";
-import type { StoreModuleKey } from "@/lib/auth";
+import { allowedPaths } from "@/lib/permissions";
 
 const nav = [
   { href: "/pos/venta", label: "Venta", icon: ShoppingCart },
@@ -33,7 +32,7 @@ const nav = [
   { href: "/pos/analiticas", label: "Analíticas", icon: LineChart },
 ];
 
-export function PosSidebar({ onLogout, username, role, modules }: { onLogout: () => void; username: string; role: AuthUser["role"]; modules?: StoreModuleKey[] }) {
+export function PosSidebar({ onLogout, username, role }: { onLogout: () => void; username: string; role: AuthUser["role"] }) {
   const pathname = usePathname();
 
   return (
@@ -57,7 +56,7 @@ export function PosSidebar({ onLogout, username, role, modules }: { onLogout: ()
       </div>
 
       <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-        {[...nav, { href: "/pos/codigos-barras", label: "Códigos de barras", icon: Printer }, ...(role === "admin" ? [{ href: "/pos/usuarios", label: "Usuarios", icon: Users }, { href: "/pos/respaldo", label: "Exportar ventas", icon: Download }] : [])].filter(({ href }) => allowedPaths(role, modules).some((path) => path === "/pos/" || path === href) && isModuleEnabled(modules, href)).map(({ href, label, icon: Icon }) => {
+        {[...nav, { href: "/pos/codigos-barras", label: "Códigos de barras", icon: Printer }, ...(role === "admin" ? [{ href: "/pos/usuarios", label: "Usuarios", icon: Users }, { href: "/pos/respaldo", label: "Exportar ventas", icon: Download }] : [])].filter(({ href }) => allowedPaths(role).some((path) => path === "/pos/" || path === href)).map(({ href, label, icon: Icon }) => {
           const active = pathname === href || pathname.startsWith(`${href}/`);
           return (
             <Link

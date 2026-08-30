@@ -1,24 +1,4 @@
-export type StoreModuleKey =
-  | "venta"
-  | "productos"
-  | "inventario"
-  | "ventas"
-  | "apartados"
-  | "cotizaciones"
-  | "taller"
-  | "analiticas"
-  | "codigos_barras"
-  | "exportar_ventas";
-
-export type AuthUser = {
-  id: string;
-  username: string;
-  role: "admin" | "cajero" | "taller";
-  mustChangePassword: boolean;
-  storeId: string;
-  store: { id: string; name: string; code: string };
-  modules: StoreModuleKey[];
-};
+export type AuthUser = { id: string; username: string; role: "admin" | "cajero" | "taller"; mustChangePassword: boolean };
 export type AuthSession = { access_token: string; user: AuthUser };
 
 const AUTH_KEY = "northbike-pos-auth-v1";
