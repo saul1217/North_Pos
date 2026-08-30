@@ -80,13 +80,15 @@ export function SyncBar() {
     pending: "border-amber-200 bg-amber-50 text-amber-800",
     synced: "border-emerald-200 bg-emerald-50 text-emerald-700",
   }[state];
-  const label = !online
-    ? "Sin conexión"
-    : totalPending > 0
-      ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} por sincronizar`
-      : hasSyncError
-        ? "Sincronización pendiente"
-      : "Datos sincronizados";
+  const label = syncing
+    ? "Sincronizando..."
+    : !online
+      ? "Sin conexión"
+      : totalPending > 0
+        ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} pendientes`
+        : hasSyncError
+          ? "Error de sincronización — reintentar"
+          : "Datos sincronizados";
   const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
 
   return (
