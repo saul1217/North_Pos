@@ -469,7 +469,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         </div>
         {catalogError && (
           <p className="mt-3 border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800">
-            Sin conexión al backend. Se muestra el catálogo guardado localmente.
+            No se pudo sincronizar el catálogo. Se muestra la copia local. Motivo: {catalogError}
           </p>
         )}
         {deleteMessage && (
