@@ -228,6 +228,15 @@ export default function PosTallerPage() {
     setSaveMessage("Orden marcada como entregada.");
   }
 
+  function markOrderFinished(order: WorkshopOrder) {
+    if (order.status !== "diagnosticada") return;
+    updateWorkshopOrder(order.id, { status: "terminada" });
+    if (selected?.id === order.id) {
+      setSelected({ ...selected, status: "terminada" });
+    }
+    setSaveMessage(`${order.folio} marcada como terminada. Espera el pago antes de confirmar la entrega.`);
+  }
+
   function addBudgetLine() {
     setBudgetItems((prev) => [
       ...prev,
@@ -345,15 +354,16 @@ export default function PosTallerPage() {
                     <th className="px-4 py-3">Estado</th>
                     <th className="px-4 py-3">Pago</th>
                     <th className="px-4 py-3">Presupuesto</th>
+                    {!isCashier && <th className="px-4 py-3">Acción</th>}
                   </tr>
                 </thead>
                 <tbody>
                   {workshopLoading ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-north-muted">Cargando órdenes centralizadas...</td></tr>
+                    <tr><td colSpan={isCashier ? 7 : 8} className="px-4 py-10 text-center text-sm text-north-muted">Cargando órdenes centralizadas...</td></tr>
                   ) : workshopError ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-red-700">No se pudieron cargar las órdenes: {workshopError}</td></tr>
+                    <tr><td colSpan={isCashier ? 7 : 8} className="px-4 py-10 text-center text-sm text-red-700">No se pudieron cargar las órdenes: {workshopError}</td></tr>
                   ) : filteredOrders.length === 0 ? (
-                    <tr><td colSpan={7} className="px-4 py-10 text-center text-sm text-north-muted">No hay órdenes en esta sección.</td></tr>
+                    <tr><td colSpan={isCashier ? 7 : 8} className="px-4 py-10 text-center text-sm text-north-muted">No hay órdenes en esta sección.</td></tr>
                   ) : filteredOrders.map((o) => (
                     <tr
                       key={o.id}
@@ -384,6 +394,20 @@ export default function PosTallerPage() {
                           ? formatPosPrice(o.budget.total)
                           : "—"}
                       </td>
+                      {!isCashier && <td className="px-4 py-3">
+                        {o.status === "diagnosticada" && (
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              markOrderFinished(o);
+                            }}
+                            className="h-9 border border-north-primary px-3 text-xs font-semibold text-north-primary hover:bg-north-primary hover:text-white"
+                          >
+                            Marcar como terminada
+                          </button>
+                        )}
+                      </td>}
                     </tr>
                   ))}
                 </tbody>
