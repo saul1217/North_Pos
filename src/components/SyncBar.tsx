@@ -15,6 +15,7 @@ export function SyncBar() {
     mergeRemoteSales,
     refreshCatalog,
     catalogError,
+    workshopError,
   } = usePos();
   const [online, setOnline] = useState(() =>
     typeof navigator !== "undefined" ? navigator.onLine : true,
@@ -22,26 +23,40 @@ export function SyncBar() {
   const [pending, setPending] = useState(0);
   const [syncing, setSyncing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showStatus, setShowStatus] = useState(true);
 
   const salesRef = useRef(sales);
   salesRef.current = sales;
   const syncingRef = useRef(false);
+  const failureCountRef = useRef(0);
+  const firstSyncShownRef = useRef(false);
 
   const runSync = useCallback(async () => {
     if (syncingRef.current) return;
     syncingRef.current = true;
     setSyncing(true);
     setError(null);
+    if (!firstSyncShownRef.current) {
+      firstSyncShownRef.current = true;
+      setShowStatus(true);
+    }
+    let failed = Boolean(catalogError || workshopError);
     const role = getAuthSession()?.user.role;
     const canSyncSales = role === "admin" || role === "cajero";
     if (canSyncSales) {
       const res = await syncSales(salesRef.current);
       setPending(res.pending);
-      setError(res.ok ? null : (res.error ?? "error"));
+      if (!res.ok) {
+        failed = true;
+        setError(res.error ?? "error");
+      } else {
+        setError(null);
+      }
       try {
         const remoteSales = await fetchSales();
         mergeRemoteSales(remoteSales);
       } catch (salesError) {
+        failed = true;
         setError((salesError as Error).message || "No se pudieron descargar las ventas");
       }
     } else {
@@ -49,6 +64,14 @@ export function SyncBar() {
     }
     await refreshCatalog();
     await syncWorkshopOrders();
+    if (failed) {
+      failureCountRef.current += 1;
+      if (failureCountRef.current >= 2) setShowStatus(true);
+      else setShowStatus(false);
+    } else {
+      failureCountRef.current = 0;
+      setShowStatus(false);
+    }
     setSyncing(false);
     syncingRef.current = false;
   }, [mergeRemoteSales, refreshCatalog, syncWorkshopOrders]);
@@ -100,7 +123,7 @@ export function SyncBar() {
   const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
 
   return (
-    <div className="pos-no-print flex shrink-0 flex-wrap items-center justify-end gap-2 border-b border-north-border bg-white px-4 py-1.5">
+    <div className={`pos-no-print ${showStatus ? "flex" : "hidden"} shrink-0 flex-wrap items-center justify-end gap-2 border-b border-north-border bg-white px-4 py-1.5`}>
       {hasSyncError && (
         <span className="max-w-[min(70vw,520px)] truncate text-[11px] text-red-700" title={syncErrorMessage ?? undefined}>
           Motivo: {syncErrorMessage}
