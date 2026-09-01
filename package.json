@@ -1,7 +1,7 @@
 {
   "name": "northbike-pos",
   "private": true,
-  "version": "0.1.4",
+  "version": "0.1.5",
   "description": "Punto de venta de escritorio para North Bike",
   "author": "North Bike",
   "type": "module",
