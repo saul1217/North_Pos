@@ -52,7 +52,7 @@ export function PosSidebar({ onLogout, username, role }: { onLogout: () => void;
             <p className="font-display text-sm font-bold uppercase tracking-[0.12em]">
               North Bike POS
             </p>
-            <p className="text-[11px] text-north-steel">Demo interna</p>
+            <p className="text-[11px] text-north-steel">Miguel</p>
           </div>
         </div>
       </div>
