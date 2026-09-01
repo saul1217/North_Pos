@@ -6,9 +6,13 @@ import type { Layaway } from "@/lib/pos/types";
 export function LayawayReceipt({
   layaway,
   payment,
+  received = payment,
+  change = 0,
 }: {
   layaway: Layaway;
   payment: number;
+  received?: number;
+  change?: number;
 }) {
   const date = new Date(layaway.payments.at(-1)?.date ?? layaway.createdAt);
 
@@ -67,6 +71,18 @@ export function LayawayReceipt({
           <span>Abono registrado</span>
           <span>{formatPosPrice(payment)}</span>
         </div>
+        {change > 0 && (
+          <>
+            <div className="flex justify-between">
+              <span>Recibido</span>
+              <span>{formatPosPrice(received)}</span>
+            </div>
+            <div className="flex justify-between font-semibold">
+              <span>Cambio</span>
+              <span>{formatPosPrice(change)}</span>
+            </div>
+          </>
+        )}
         <div className="flex justify-between border-t border-gray-300 pt-2 text-sm font-bold">
           <span>SALDO</span>
           <span>{formatPosPrice(layaway.balance)}</span>

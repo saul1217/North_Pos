@@ -23,6 +23,8 @@ export default function PosApartadosPage() {
   const [receipt, setReceipt] = useState<{
     layaway: Layaway;
     payment: number;
+    received: number;
+    change: number;
   } | null>(null);
   const selectedLayaway = paymentLayaway ? layaways.find((l) => l.id === paymentLayaway) : null;
 
@@ -135,6 +137,8 @@ export default function PosApartadosPage() {
                         setReceipt({
                           layaway: l,
                           payment: l.payments.at(-1)?.amount ?? l.deposit,
+                          received: l.payments.at(-1)?.amount ?? l.deposit,
+                          change: 0,
                         })
                       }
                       className="inline-flex items-center gap-1 text-xs text-north-primary hover:underline"
@@ -240,18 +244,13 @@ export default function PosApartadosPage() {
             <input
               type="number"
               min="0"
-              max={selectedLayaway?.balance ?? undefined}
               step="0.01"
               value={paymentAmount}
-              onChange={(e) => {
-                const value = Number(e.target.value);
-                const balance = selectedLayaway?.balance ?? 0;
-                setPaymentAmount(e.target.value && Number.isFinite(value) ? String(Math.min(Math.max(0, value), balance)) : e.target.value);
-              }}
+              onChange={(e) => setPaymentAmount(e.target.value)}
               placeholder="Monto"
               className="mt-4 h-10 w-full border border-north-border px-3"
             />
-            {selectedLayaway && <p className="mt-2 text-xs text-north-muted">Saldo pendiente: {formatPosPrice(selectedLayaway.balance)}. El abono se limitará a ese monto.</p>}
+            {selectedLayaway && <p className="mt-2 text-xs text-north-muted">Saldo pendiente: {formatPosPrice(selectedLayaway.balance)}. Si entregas más, se calculará el cambio.</p>}
             <button
               type="button"
               onClick={() => {
@@ -260,9 +259,15 @@ export default function PosApartadosPage() {
                   selectedLayaway?.balance ?? 0,
                   Math.max(0, requested),
                 );
+                const change = Math.max(0, requested - applied);
                 const updatedLayaway = addLayawayPayment(paymentLayaway, requested);
                 if (updatedLayaway && applied > 0) {
-                  setReceipt({ layaway: updatedLayaway, payment: applied });
+                  setReceipt({
+                    layaway: updatedLayaway,
+                    payment: applied,
+                    received: requested,
+                    change,
+                  });
                 }
                 setPaymentLayaway(null);
                 setPaymentAmount("");
@@ -278,7 +283,12 @@ export default function PosApartadosPage() {
       {receipt && (
         <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="relative w-full max-w-sm">
-            <LayawayReceipt layaway={receipt.layaway} payment={receipt.payment} />
+            <LayawayReceipt
+              layaway={receipt.layaway}
+              payment={receipt.payment}
+              received={receipt.received}
+              change={receipt.change}
+            />
             <div className="mt-4 flex gap-2">
               <button
                 type="button"
