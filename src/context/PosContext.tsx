@@ -61,7 +61,7 @@ import {
   syncProducts,
   type ProductInput,
 } from "@/lib/catalog/api";
-import { getAccessToken, getAuthSession } from "@/lib/auth";
+import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/auth";
 
 type PosStore = PosPersistedState & {
   currentSale: CurrentSale;
@@ -312,7 +312,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       // pierde lo que sí alcanzamos a descargar.
       persist({ products, deletedProductIds: deletedIds });
       if (getAuthSession()?.user.role !== "admin") return;
-      const reconciled = await syncProducts({ products, deletedIds });
+      const reconciled = await syncProducts({ products, deletedIds }, getBackgroundAccessToken());
       const finalDeletedIds = [...new Set([...deletedIds, ...reconciled.deletedIds])];
       persist({
         // Tras una sincronización aceptada, la respuesta del servidor es la
@@ -339,11 +339,11 @@ export function PosProvider({ children }: { children: ReactNode }) {
         try {
           let synced: WorkshopOrder;
           if (operation.kind === "create") {
-            synced = await createWorkshopOrderApi(operation.payload);
+            synced = await createWorkshopOrderApi(operation.payload, getBackgroundAccessToken());
           } else if (operation.kind === "budget") {
-            synced = await updateWorkshopBudgetApi(operation.orderId, operation.payload);
+            synced = await updateWorkshopBudgetApi(operation.orderId, operation.payload, getBackgroundAccessToken());
           } else {
-            synced = await updateWorkshopOrderApi(operation.orderId, operation.payload);
+            synced = await updateWorkshopOrderApi(operation.orderId, operation.payload, getBackgroundAccessToken());
           }
           persist({
             workshopOrders: store.workshopOrders.map((order) => order.id === synced.id ? synced : order),

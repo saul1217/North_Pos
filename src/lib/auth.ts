@@ -2,6 +2,7 @@ export type AuthUser = { id: string; username: string; role: "admin" | "cajero" 
 export type AuthSession = { access_token: string; user: AuthUser };
 
 const AUTH_KEY = "northbike-pos-auth-v1";
+let backgroundAdminToken: string | null = null;
 
 export function getAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
@@ -24,11 +25,19 @@ export function getAuthSession(): AuthSession | null {
 }
 
 export function saveAuthSession(session: AuthSession) {
+  if (session.user.role === "admin") backgroundAdminToken = session.access_token;
   if (typeof window !== "undefined" && window.pos?.saveAuthSession) {
     void window.pos.saveAuthSession(JSON.stringify(session));
     return;
   }
   localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+}
+
+// Permite que la cola del POS termine operaciones del administrador mientras
+// se cambia a caja, sin persistir ni exponer otra sesión en la interfaz.
+export function getBackgroundAccessToken() {
+  const session = getAuthSession();
+  return session?.user.role === "admin" ? session.access_token : backgroundAdminToken;
 }
 
 export function clearAuthSession() {

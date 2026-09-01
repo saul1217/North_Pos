@@ -13,8 +13,8 @@ export type ProductSyncState = {
   deletedIds: string[];
 };
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAccessToken();
+async function request<T>(path: string, init?: RequestInit, accessToken?: string | null): Promise<T> {
+  const token = accessToken ?? getAccessToken();
   const isFormData = typeof FormData !== "undefined" && init?.body instanceof FormData;
   const response = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -55,11 +55,11 @@ export function fetchProducts(): Promise<PosProduct[]> {
   return request<PosProduct[]>("/api/products");
 }
 
-export function fetchProductSync(): Promise<ProductSyncState> {
-  return request<ProductSyncState>("/api/products/sync");
+export function fetchProductSync(accessToken?: string | null): Promise<ProductSyncState> {
+  return request<ProductSyncState>("/api/products/sync", undefined, accessToken);
 }
 
-export function syncProducts(input: ProductSyncState): Promise<ProductSyncState> {
+export function syncProducts(input: ProductSyncState, accessToken?: string | null): Promise<ProductSyncState> {
   const products = input.products.map((product) => {
     const { createdAt: _createdAt, deletedAt: _deletedAt, variants, serialUnits, ...cleanProduct } = product as PosProduct & {
       createdAt?: string;
@@ -80,7 +80,7 @@ export function syncProducts(input: ProductSyncState): Promise<ProductSyncState>
   return request<ProductSyncState>("/api/products/sync", {
     method: "POST",
     body: JSON.stringify({ ...input, products }),
-  });
+  }, accessToken);
 }
 
 export function createProduct(input: ProductInput): Promise<PosProduct> {
@@ -107,21 +107,22 @@ export function fetchWorkshopOrders(): Promise<WorkshopOrder[]> {
   return request<WorkshopOrder[]>("/api/workshop-orders");
 }
 
-export function createWorkshopOrder(input: WorkshopOrder): Promise<WorkshopOrder> {
+export function createWorkshopOrder(input: WorkshopOrder, accessToken?: string | null): Promise<WorkshopOrder> {
   return request<WorkshopOrder>("/api/workshop-orders", {
     method: "POST",
     body: JSON.stringify(input),
-  });
+  }, accessToken);
 }
 
 export function updateWorkshopOrder(
   id: string,
   input: Partial<WorkshopOrder>,
+  accessToken?: string | null,
 ): Promise<WorkshopOrder> {
   return request<WorkshopOrder>(`/api/workshop-orders/${id}`, {
     method: "PATCH",
     body: JSON.stringify(input),
-  });
+  }, accessToken);
 }
 
 export function updateWorkshopBudget(
@@ -132,11 +133,12 @@ export function updateWorkshopBudget(
     diagnosis?: string;
     technicalNotes?: string;
   },
+  accessToken?: string | null,
 ): Promise<WorkshopOrder> {
   return request<WorkshopOrder>(`/api/workshop-orders/${id}/budget`, {
     method: "PATCH",
     body: JSON.stringify(input),
-  });
+  }, accessToken);
 }
 
 export function payWorkshopOrder(
