@@ -896,6 +896,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deposit: number;
     }) => {
       const total = calcSaleSubtotal(input.items);
+      const deposit = Math.min(total, Math.max(0, Number(input.deposit) || 0));
       const folio = nextLayawayFolio(store);
       const layaway: Layaway = {
         id: crypto.randomUUID(),
@@ -903,13 +904,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
         customer: input.customer,
         items: input.items,
         total,
-        deposit: input.deposit,
-        balance: total - input.deposit,
+        deposit,
+        balance: total - deposit,
         payments: [
           {
             id: crypto.randomUUID(),
             date: new Date().toISOString(),
-            amount: input.deposit,
+            amount: deposit,
           },
         ],
         status: "activo",
@@ -965,17 +966,19 @@ export function PosProvider({ children }: { children: ReactNode }) {
     persist({
       layaways: store.layaways.map((l) => {
         if (l.id !== layawayId || l.status !== "activo") return l;
-        const balance = Math.max(0, l.balance - amount);
+        const payment = Math.min(l.balance, Math.max(0, Number(amount) || 0));
+        if (payment <= 0) return l;
+        const balance = l.balance - payment;
         return {
           ...l,
           balance,
-          deposit: l.deposit + amount,
+          deposit: l.deposit + payment,
           payments: [
             ...l.payments,
             {
               id: crypto.randomUUID(),
               date: new Date().toISOString(),
-              amount,
+              amount: payment,
             },
           ],
           status: balance <= 0 ? ("liquidado" as const) : l.status,

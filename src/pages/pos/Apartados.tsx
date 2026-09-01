@@ -19,6 +19,7 @@ export default function PosApartadosPage() {
   >([]);
   const [paymentLayaway, setPaymentLayaway] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const selectedLayaway = paymentLayaway ? layaways.find((l) => l.id === paymentLayaway) : null;
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -218,11 +219,19 @@ export default function PosApartadosPage() {
             <h3 className="font-display text-lg font-bold">Registrar abono</h3>
             <input
               type="number"
+              min="0"
+              max={selectedLayaway?.balance ?? undefined}
+              step="0.01"
               value={paymentAmount}
-              onChange={(e) => setPaymentAmount(e.target.value)}
+              onChange={(e) => {
+                const value = Number(e.target.value);
+                const balance = selectedLayaway?.balance ?? 0;
+                setPaymentAmount(e.target.value && Number.isFinite(value) ? String(Math.min(Math.max(0, value), balance)) : e.target.value);
+              }}
               placeholder="Monto"
               className="mt-4 h-10 w-full border border-north-border px-3"
             />
+            {selectedLayaway && <p className="mt-2 text-xs text-north-muted">Saldo pendiente: {formatPosPrice(selectedLayaway.balance)}. El abono se limitará a ese monto.</p>}
             <button
               type="button"
               onClick={() => {
