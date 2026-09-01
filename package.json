@@ -20,6 +20,7 @@
   "build": {
     "appId": "com.northbike.pos",
     "productName": "North Bike POS",
+    "artifactName": "North-Bike-POS-Setup-${version}.${ext}",
     "files": [
       "dist/**/*",
       "electron/**/*"
