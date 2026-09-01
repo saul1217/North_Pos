@@ -379,14 +379,40 @@ export function SaleScreen() {
               </div>
               <div className="flex items-center justify-between gap-2">
                 <span className="text-north-muted">Descuento global</span>
-                <input
-                  type="number"
-                  min={0}
-                  value={currentSale.discount || ""}
-                  onChange={(e) => setDiscount(Number(e.target.value) || 0)}
-                  placeholder="0"
-                  className="h-8 w-24 border border-north-border bg-white px-2 text-right text-sm"
-                />
+                <div className="flex items-center gap-1">
+                  <select
+                    value={currentSale.discountType ?? "fixed"}
+                    onChange={(e) =>
+                      setDiscount(
+                        currentSale.discount,
+                        e.target.value as "percent" | "fixed",
+                      )
+                    }
+                    className="h-8 border border-north-border bg-white px-1 text-xs"
+                    aria-label="Tipo de descuento global"
+                  >
+                    <option value="fixed">Pesos</option>
+                    <option value="percent">Porcentaje</option>
+                  </select>
+                  <input
+                    type="number"
+                    min={0}
+                    max={currentSale.discountType === "percent" ? 100 : undefined}
+                    value={currentSale.discount || ""}
+                    onChange={(e) =>
+                      setDiscount(
+                        Number(e.target.value) || 0,
+                        currentSale.discountType ?? "fixed",
+                      )
+                    }
+                    placeholder="0"
+                    className="h-8 w-20 border border-north-border bg-white px-2 text-right text-sm"
+                    aria-label="Valor del descuento global"
+                  />
+                  <span className="text-xs text-north-muted">
+                    {currentSale.discountType === "percent" ? "%" : "$"}
+                  </span>
+                </div>
               </div>
               <div className="flex justify-between border-t border-north-border pt-2 font-display text-xl font-bold">
                 <span>Total</span>

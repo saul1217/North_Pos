@@ -75,7 +75,7 @@ function initialStore(): PosStore {
   const base = getDefaultState();
   return {
     ...base,
-    currentSale: { items: [], discount: 0 },
+    currentSale: { items: [], discount: 0, discountType: "fixed" },
     lastCompletedSale: null,
     checkoutOpen: false,
     successOpen: false,
@@ -213,7 +213,7 @@ type PosContextValue = {
   removeFromSale: (lineId: string) => void;
   setLineQuantity: (lineId: string, quantity: number) => void;
   setLineDiscount: (lineId: string, discount?: LineDiscount) => void;
-  setDiscount: (discount: number) => void;
+  setDiscount: (discount: number, type?: "percent" | "fixed") => void;
   openCheckout: () => void;
   closeCheckout: () => void;
   completeSale: (
@@ -493,9 +493,16 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [snapshot.currentSale.items],
   );
 
+  const discountAmount = useMemo(() => {
+    const discount = snapshot.currentSale.discount;
+    const type = snapshot.currentSale.discountType ?? "fixed";
+    const amount = type === "percent" ? subtotal * (discount / 100) : discount;
+    return Math.min(subtotal, Math.max(0, amount));
+  }, [snapshot.currentSale.discount, snapshot.currentSale.discountType, subtotal]);
+
   const total = useMemo(
-    () => Math.max(0, subtotal - snapshot.currentSale.discount),
-    [subtotal, snapshot.currentSale.discount],
+    () => Math.max(0, subtotal - discountAmount),
+    [discountAmount, subtotal],
   );
 
   const itemCount = useMemo(
@@ -601,11 +608,12 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const setDiscount = useCallback((discount: number) => {
+  const setDiscount = useCallback((discount: number, type: "percent" | "fixed" = "fixed") => {
     persist({
       currentSale: {
         ...store.currentSale,
         discount: Math.max(0, discount),
+        discountType: type,
       },
     });
   }, []);
@@ -621,7 +629,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
     (payments: PaymentSplit[], cashReceived?: number) => {
       if (store.currentSale.items.length === 0) return null;
       const saleSubtotal = calcSaleSubtotal(store.currentSale.items);
-      const saleTotal = Math.max(0, saleSubtotal - store.currentSale.discount);
+      const saleDiscount = store.currentSale.discountType === "percent"
+        ? Math.min(saleSubtotal, saleSubtotal * (store.currentSale.discount / 100))
+        : Math.min(saleSubtotal, Math.max(0, store.currentSale.discount));
+      const saleTotal = Math.max(0, saleSubtotal - saleDiscount);
       const covered = payments.reduce((s, p) => s + p.amount, 0);
       if (Math.abs(covered - saleTotal) > 0.01) return null;
 
@@ -639,7 +650,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         cashier: getAuthSession()?.user.username,
         items: [...store.currentSale.items],
         subtotal: saleSubtotal,
-        discount: store.currentSale.discount,
+        discount: saleDiscount,
         total: saleTotal,
         payments,
         amountReceived: cashReceived,
@@ -674,7 +685,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         sales: [sale, ...store.sales],
         folioCounter: store.folioCounter + 1,
         lastCompletedSale: sale,
-        currentSale: { items: [], discount: 0 },
+    currentSale: { items: [], discount: 0, discountType: "fixed" },
         checkoutOpen: false,
         successOpen: true,
       });
@@ -1089,6 +1100,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       currentSale: {
         items: quote.items.map((i) => ({ ...i })),
         discount: quote.discount,
+        discountType: "fixed",
       },
     });
   }, []);
@@ -1203,7 +1215,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const newSale = useCallback(() => {
     persist({
-      currentSale: { items: [], discount: 0 },
+      currentSale: { items: [], discount: 0, discountType: "fixed" },
       successOpen: false,
       ticketOpen: false,
       lastCompletedSale: null,

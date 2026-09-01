@@ -115,6 +115,7 @@ export type CompletedSale = {
 export type CurrentSale = {
   items: SaleLineItem[];
   discount: number;
+  discountType?: "percent" | "fixed";
 };
 
 export type InventoryMovementType =
