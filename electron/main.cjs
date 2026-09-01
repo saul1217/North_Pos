@@ -138,7 +138,8 @@ ipcMain.handle("updates:download", async () => {
   return true;
 });
 ipcMain.handle("updates:install", () => {
-  if (!isDev) autoUpdater.quitAndInstall(false, true);
+  // Ejecuta el instalador NSIS sin mostrar su ventana durante la actualización.
+  if (!isDev) autoUpdater.quitAndInstall(true, true);
   return true;
 });
 
