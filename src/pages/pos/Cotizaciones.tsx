@@ -7,12 +7,13 @@ import { usePos } from "@/context/PosContext";
 import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
 import type { PosProduct, Quotation, SaleLineItem } from "@/lib/pos/types";
 import Image from "next/image";
+import { logoSrc } from "@/lib/brand";
 
 function QuotePrint({ quote }: { quote: Quotation }) {
   return (
     <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
-        <Image src="/public/brand/logo.png" alt="North Bike" width={56} height={56} className="mx-auto mb-2 h-12 w-12 object-contain" />
+        <Image src={logoSrc} alt="North Bike" width={56} height={56} className="mx-auto mb-2 h-12 w-12 object-contain" />
         <p className="font-display text-lg font-bold uppercase">North Bike</p>
         <p className="text-xs">Cotización — no fiscal</p>
       </div>

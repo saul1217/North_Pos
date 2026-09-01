@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth";
 import { allowedPaths } from "@/lib/permissions";
+import { logoSrc } from "@/lib/brand";
 
 const nav = [
   { href: "/pos/venta", label: "Venta", icon: ShoppingCart },
@@ -42,7 +43,7 @@ export function PosSidebar({ onLogout, username, role }: { onLogout: () => void;
       <div className="border-b border-white/10 px-4 py-5">
         <div className="flex items-center gap-3">
           <Image
-            src="/public/brand/logo.png"
+            src={logoSrc}
             alt="North Bike"
             width={40}
             height={40}

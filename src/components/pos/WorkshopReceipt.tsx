@@ -1,5 +1,6 @@
 import type { WorkshopOrder } from "@/lib/pos/types";
 import Image from "next/image";
+import { logoSrc } from "@/lib/brand";
 
 export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
   const date = new Date(order.receivedAt);
@@ -8,7 +9,7 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
     <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
         <Image
-          src="/public/brand/logo.png"
+          src={logoSrc}
           alt="North Bike"
           width={56}
           height={56}

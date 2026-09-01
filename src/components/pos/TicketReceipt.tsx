@@ -5,6 +5,7 @@ import {
   paymentMethodLabels,
 } from "@/lib/pos/inventory";
 import Image from "next/image";
+import { logoSrc } from "@/lib/brand";
 
 export function TicketReceipt({ sale }: { sale: CompletedSale }) {
   const date = new Date(sale.date);
@@ -13,7 +14,7 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
     <div className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
       <div className="text-center">
         <Image
-          src="/public/brand/logo.png"
+          src={logoSrc}
           alt="North Bike"
           width={64}
           height={64}
