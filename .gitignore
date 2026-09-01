@@ -28,6 +28,10 @@ pnpm-debug.log*
 .cache/
 *.tsbuildinfo
 
+# Certificados locales de firma autofirmada
+*.pfx
+*.cer
+
 # Sistema operativo
 .DS_Store
 Thumbs.db
