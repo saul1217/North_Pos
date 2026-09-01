@@ -36,7 +36,7 @@ button:disabled {
   }
 
   .pos-no-print {
-    display: none !important;
+    visibility: hidden !important;
   }
 
   .pos-barcode-print {
