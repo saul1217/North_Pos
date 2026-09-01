@@ -42,7 +42,7 @@ export function PosSidebar({ onLogout, username, role }: { onLogout: () => void;
       <div className="border-b border-white/10 px-4 py-5">
         <div className="flex items-center gap-3">
           <Image
-            src="/brand/logo.png"
+            src="/public/brand/logo.png"
             alt="North Bike"
             width={40}
             height={40}

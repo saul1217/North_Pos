@@ -30,6 +30,7 @@
       "output": "C:/Users/ramos/AppData/Local/nb-pos-release"
     },
     "win": {
+      "icon": "public/public/brand/logo.ico",
       "target": [
         "nsis"
       ]

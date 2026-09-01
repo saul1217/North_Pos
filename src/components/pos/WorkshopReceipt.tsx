@@ -8,7 +8,7 @@ export function WorkshopReceipt({ order }: { order: WorkshopOrder }) {
     <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
         <Image
-          src="/brand/logo.png"
+          src="/public/brand/logo.png"
           alt="North Bike"
           width={56}
           height={56}

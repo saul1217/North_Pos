@@ -80,6 +80,9 @@ const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5180
 const isDev = !app.isPackaged;
 
 function createWindow() {
+  const appIcon = app.isPackaged
+    ? path.join(__dirname, "..", "dist", "public", "brand", "logo.png")
+    : path.join(__dirname, "..", "public", "public", "brand", "logo.png");
   const win = new BrowserWindow({
     width: 1280,
     height: 800,
@@ -88,6 +91,7 @@ function createWindow() {
     backgroundColor: "#081319",
     autoHideMenuBar: true,
     title: "North Bike POS",
+    icon: appIcon,
     webPreferences: {
       preload: path.join(__dirname, "preload.cjs"),
       contextIsolation: true,
