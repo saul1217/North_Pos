@@ -1,4 +1,5 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
+const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const path = require("node:path");
 const db = require("./db.cjs");
@@ -78,6 +79,61 @@ ipcMain.handle("pos:importBackup", async () => {
 // IPv6 first while Vite is listening only on 127.0.0.1, leaving Electron blank.
 const DEV_SERVER_URL = process.env.VITE_DEV_SERVER_URL || "http://127.0.0.1:5180";
 const isDev = !app.isPackaged;
+let mainWindow = null;
+
+function sendUpdateStatus(status, extra = {}) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("updates:status", { status, ...extra });
+  }
+}
+
+function setupAutoUpdater() {
+  if (isDev) return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+  autoUpdater.allowPrerelease = false;
+
+  autoUpdater.on("checking-for-update", () => sendUpdateStatus("checking"));
+  autoUpdater.on("update-available", (info) => {
+    sendUpdateStatus("available", { version: info.version });
+  });
+  autoUpdater.on("update-not-available", (info) => {
+    sendUpdateStatus("up-to-date", { version: info.version });
+  });
+  autoUpdater.on("download-progress", (progress) => {
+    sendUpdateStatus("downloading", { percent: Math.round(progress.percent) });
+  });
+  autoUpdater.on("update-downloaded", (info) => {
+    sendUpdateStatus("downloaded", { version: info.version });
+  });
+  autoUpdater.on("error", (error) => {
+    console.error("Auto-update error:", error);
+    sendUpdateStatus("error", { message: error.message });
+  });
+
+  setTimeout(() => {
+    autoUpdater.checkForUpdates().catch((error) => {
+      console.error("Auto-update check error:", error);
+      sendUpdateStatus("error", { message: error.message });
+    });
+  }, 5000);
+}
+
+ipcMain.handle("updates:check", async () => {
+  if (isDev) return { status: "disabled-in-development" };
+  const result = await autoUpdater.checkForUpdates();
+  return { status: result?.updateInfo ? "checked" : "unknown", version: result?.updateInfo?.version };
+});
+ipcMain.handle("updates:download", async () => {
+  if (isDev) return false;
+  await autoUpdater.downloadUpdate();
+  return true;
+});
+ipcMain.handle("updates:install", () => {
+  if (!isDev) autoUpdater.quitAndInstall(false, true);
+  return true;
+});
 
 function createWindow() {
   const appIcon = app.isPackaged
@@ -99,6 +155,7 @@ function createWindow() {
       sandbox: true,
     },
   });
+  mainWindow = win;
 
   const allowedOrigin = isDev ? new URL(DEV_SERVER_URL).origin : null;
   win.webContents.on("will-navigate", (event, url) => {
@@ -127,6 +184,7 @@ app.whenReady().then(() => {
     console.error("No se pudo abrir SQLite:", err);
   }
   createWindow();
+  setupAutoUpdater();
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow();
   });

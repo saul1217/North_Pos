@@ -17,6 +17,17 @@ declare global {
       dbPath: () => Promise<string>;
       exportBackup: () => Promise<{ canceled: boolean; path?: string }>;
       importBackup: () => Promise<{ canceled: boolean; path?: string; safetyBackup?: string }>;
+      updates?: {
+        check: () => Promise<{ status: string; version?: string }>;
+        download: () => Promise<boolean>;
+        install: () => Promise<boolean>;
+        onStatus: (callback: (payload: {
+          status: "checking" | "available" | "up-to-date" | "downloading" | "downloaded" | "error";
+          version?: string;
+          percent?: number;
+          message?: string;
+        }) => void) => () => void;
+      };
     };
   }
 }

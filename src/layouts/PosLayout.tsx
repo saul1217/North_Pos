@@ -9,6 +9,7 @@ import { ChangePasswordScreen } from "@/components/ChangePasswordScreen";
 import { clearAuthSession, getAuthSession, type AuthSession } from "@/lib/auth";
 import { usePos } from "@/context/PosContext";
 import { canAccess, defaultPath } from "@/lib/permissions";
+import { UpdateBanner } from "@/components/UpdateBanner";
 
 export function PosLayout() {
   return (
@@ -46,6 +47,7 @@ function AuthenticatedPosLayout() {
       <PosSidebar onLogout={logout} username={session.user.username} role={session.user.role} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <SyncBar />
+        <UpdateBanner />
         <Outlet />
       </div>
     </div>

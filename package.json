@@ -14,7 +14,7 @@
     "typecheck": "tsc --noEmit",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
-    "dist:signed": "npm run dist && powershell -ExecutionPolicy Bypass -File scripts/sign-windows.ps1",
+    "dist:signed": "powershell -ExecutionPolicy Bypass -File scripts/build-signed.ps1",
     "postinstall": "electron-builder install-app-deps"
   },
   "build": {
@@ -32,6 +32,10 @@
     },
     "win": {
       "icon": "public/public/brand/logo.ico",
+      "signtoolOptions": {
+        "certificateSubjectName": "North Bike POS (Local)"
+      },
+      "verifyUpdateCodeSignature": true,
       "target": [
         "nsis"
       ]
@@ -40,10 +44,19 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true
-    }
+    },
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "saul1217",
+        "repo": "North_Pos",
+        "releaseType": "release"
+      }
+    ]
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
+    "electron-updater": "^6.8.9",
     "lucide-react": "^1.31.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

@@ -18,4 +18,14 @@ contextBridge.exposeInMainWorld("pos", {
   dbPath: () => ipcRenderer.invoke("pos:dbPath"),
   exportBackup: () => ipcRenderer.invoke("pos:exportBackup"),
   importBackup: () => ipcRenderer.invoke("pos:importBackup"),
+  updates: {
+    check: () => ipcRenderer.invoke("updates:check"),
+    download: () => ipcRenderer.invoke("updates:download"),
+    install: () => ipcRenderer.invoke("updates:install"),
+    onStatus: (callback) => {
+      const listener = (_event, payload) => callback(payload);
+      ipcRenderer.on("updates:status", listener);
+      return () => ipcRenderer.removeListener("updates:status", listener);
+    },
+  },
 });
