@@ -4,7 +4,7 @@ $package = Get-Content (Join-Path $repo "package.json") -Raw | ConvertFrom-Json
 $releaseDir = $package.build.directories.output
 
 & (Join-Path $PSScriptRoot "ensure-signing-certificate.ps1")
-if ($LASTEXITCODE -ne 0) { throw "No se pudo preparar el certificado de firma." }
+if (-not $?) { throw "No se pudo preparar el certificado de firma." }
 
 Push-Location $repo
 try {
