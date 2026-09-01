@@ -4,6 +4,7 @@ type UpdateState = {
   status: "available" | "downloading" | "downloaded" | "error";
   version?: string;
   percent?: number;
+  message?: string;
 };
 
 export function UpdateBanner() {
@@ -16,7 +17,7 @@ export function UpdateBanner() {
       if (payload.status === "available" || payload.status === "downloading" || payload.status === "downloaded") {
         setUpdate({ ...payload, status: payload.status });
       } else if (payload.status === "error") {
-        setUpdate(null);
+        setUpdate({ status: "error", message: payload.message });
       }
     });
   }, []);
@@ -40,6 +41,11 @@ export function UpdateBanner() {
           <button className="font-semibold text-north-primary underline" onClick={() => void window.pos?.updates?.install()}>
             Reiniciar y actualizar
           </button>
+        </span>
+      )}
+      {update.status === "error" && (
+        <span className="text-red-700">
+          No se pudo preparar la actualización. {update.message || "Intenta nuevamente."}
         </span>
       )}
     </div>

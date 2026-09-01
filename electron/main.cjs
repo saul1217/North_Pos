@@ -127,7 +127,14 @@ ipcMain.handle("updates:check", async () => {
 });
 ipcMain.handle("updates:download", async () => {
   if (isDev) return false;
-  await autoUpdater.downloadUpdate();
+  try {
+    await autoUpdater.downloadUpdate();
+    sendUpdateStatus("downloaded");
+  } catch (error) {
+    console.error("Auto-update download error:", error);
+    sendUpdateStatus("error", { message: error.message });
+    throw error;
+  }
   return true;
 });
 ipcMain.handle("updates:install", () => {
