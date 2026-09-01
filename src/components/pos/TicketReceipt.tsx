@@ -13,7 +13,7 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
     <div className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
       <div className="text-center">
         <Image
-          src="/brand/logofavi.jpg"
+          src="/brand/logo.png"
           alt="North Bike"
           width={64}
           height={64}

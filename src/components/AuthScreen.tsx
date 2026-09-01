@@ -1,5 +1,4 @@
 import { useState, type FormEvent } from "react";
-import { LockKeyhole } from "lucide-react";
 import { login } from "@/lib/catalog/api";
 import { saveAuthSession, type AuthSession } from "@/lib/auth";
 
@@ -28,7 +27,7 @@ export function AuthScreen({ onLogin }: { onLogin: (session: AuthSession) => voi
     <main className="flex min-h-screen items-center justify-center bg-north-dark px-4">
       <form onSubmit={submit} className="w-full max-w-sm border border-white/10 bg-white p-7 shadow-2xl">
         <div className="mb-7 flex items-center gap-3">
-          <div className="flex h-11 w-11 items-center justify-center bg-north-primary text-white"><LockKeyhole className="h-5 w-5" /></div>
+          <img src="/brand/logo.png" alt="North Bike" className="h-14 w-14 object-contain" />
           <div><h1 className="font-display text-xl font-bold uppercase tracking-[0.08em]">North Bike POS</h1><p className="text-xs text-north-muted">Inicia sesión para continuar</p></div>
         </div>
         <label className="block text-sm font-medium">Usuario<input autoFocus required value={username} onChange={(e) => setUsername(e.target.value)} className="mt-1 h-11 w-full border border-north-border px-3" autoComplete="username" /></label>
