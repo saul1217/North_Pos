@@ -243,7 +243,7 @@ type PosContextValue = {
     items: SaleLineItem[];
     deposit: number;
   }) => Layaway;
-  addLayawayPayment: (layawayId: string, amount: number) => void;
+  addLayawayPayment: (layawayId: string, amount: number) => Layaway | null;
   cancelLayaway: (layawayId: string) => void;
   createQuotation: (input: {
     customer?: Quotation["customer"];
@@ -963,28 +963,59 @@ export function PosProvider({ children }: { children: ReactNode }) {
   );
 
   const addLayawayPayment = useCallback((layawayId: string, amount: number) => {
+    const layaway = store.layaways.find((entry) => entry.id === layawayId);
+    if (!layaway || layaway.status !== "activo") return null;
+
+    const payment = Math.min(layaway.balance, Math.max(0, Number(amount) || 0));
+    if (payment <= 0) return null;
+
+    const balance = Math.max(0, layaway.balance - payment);
+    const updatedLayaway: Layaway = {
+      ...layaway,
+      balance,
+      deposit: layaway.deposit + payment,
+      payments: [
+        ...layaway.payments,
+        {
+          id: crypto.randomUUID(),
+          date: new Date().toISOString(),
+          amount: payment,
+        },
+      ],
+      status: balance <= 0 ? "liquidado" : "activo",
+    };
+
+    const salesAlreadyHasLayaway = store.sales.some(
+      (sale) => sale.folio === layaway.folio,
+    );
+    const sale: CompletedSale = {
+      id: crypto.randomUUID(),
+      folio: layaway.folio,
+      date: new Date().toISOString(),
+      cashier: getAuthSession()?.user.username,
+      items: layaway.items,
+      subtotal: layaway.total,
+      discount: 0,
+      total: layaway.total,
+      payments: updatedLayaway.payments.map((entry) => ({
+        method: "efectivo" as const,
+        amount: entry.amount,
+      })),
+      amountReceived: updatedLayaway.deposit,
+      status: "completada",
+      returns: [],
+    };
+
     persist({
-      layaways: store.layaways.map((l) => {
-        if (l.id !== layawayId || l.status !== "activo") return l;
-        const payment = Math.min(l.balance, Math.max(0, Number(amount) || 0));
-        if (payment <= 0) return l;
-        const balance = l.balance - payment;
-        return {
-          ...l,
-          balance,
-          deposit: l.deposit + payment,
-          payments: [
-            ...l.payments,
-            {
-              id: crypto.randomUUID(),
-              date: new Date().toISOString(),
-              amount: payment,
-            },
-          ],
-          status: balance <= 0 ? ("liquidado" as const) : l.status,
-        };
-      }),
+      layaways: store.layaways.map((entry) =>
+        entry.id === layawayId ? updatedLayaway : entry,
+      ),
+      ...(balance <= 0 && !salesAlreadyHasLayaway
+        ? { sales: [sale, ...store.sales] }
+        : {}),
     });
+
+    return updatedLayaway;
   }, []);
 
   const cancelLayaway = useCallback((layawayId: string) => {

@@ -1,10 +1,11 @@
 "use client";
 
-import { Plus, Search } from "lucide-react";
+import { Plus, Printer, Search } from "lucide-react";
 import { useMemo, useState } from "react";
+import { LayawayReceipt } from "@/components/pos/LayawayReceipt";
 import { usePos } from "@/context/PosContext";
 import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
-import type { PosProduct, SaleLineItem } from "@/lib/pos/types";
+import type { Layaway, PosProduct, SaleLineItem } from "@/lib/pos/types";
 
 export default function PosApartadosPage() {
   const { layaways, products, createLayaway, addLayawayPayment, cancelLayaway } =
@@ -19,6 +20,10 @@ export default function PosApartadosPage() {
   >([]);
   const [paymentLayaway, setPaymentLayaway] = useState<string | null>(null);
   const [paymentAmount, setPaymentAmount] = useState("");
+  const [receipt, setReceipt] = useState<{
+    layaway: Layaway;
+    payment: number;
+  } | null>(null);
   const selectedLayaway = paymentLayaway ? layaways.find((l) => l.id === paymentLayaway) : null;
 
   const filtered = useMemo(() => {
@@ -123,8 +128,22 @@ export default function PosApartadosPage() {
                 </td>
                 <td className="px-4 py-3 capitalize">{l.status}</td>
                 <td className="px-4 py-3">
-                  {l.status === "activo" && (
-                    <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReceipt({
+                          layaway: l,
+                          payment: l.payments.at(-1)?.amount ?? l.deposit,
+                        })
+                      }
+                      className="inline-flex items-center gap-1 text-xs text-north-primary hover:underline"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      Ticket
+                    </button>
+                    {l.status === "activo" && (
+                      <>
                       <button
                         type="button"
                         onClick={() => setPaymentLayaway(l.id)}
@@ -139,8 +158,9 @@ export default function PosApartadosPage() {
                       >
                         Cancelar
                       </button>
-                    </div>
-                  )}
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -235,7 +255,15 @@ export default function PosApartadosPage() {
             <button
               type="button"
               onClick={() => {
-                addLayawayPayment(paymentLayaway, Number(paymentAmount) || 0);
+                const requested = Number(paymentAmount) || 0;
+                const applied = Math.min(
+                  selectedLayaway?.balance ?? 0,
+                  Math.max(0, requested),
+                );
+                const updatedLayaway = addLayawayPayment(paymentLayaway, requested);
+                if (updatedLayaway && applied > 0) {
+                  setReceipt({ layaway: updatedLayaway, payment: applied });
+                }
                 setPaymentLayaway(null);
                 setPaymentAmount("");
               }}
@@ -243,6 +271,31 @@ export default function PosApartadosPage() {
             >
               Confirmar abono
             </button>
+          </div>
+        </div>
+      )}
+
+      {receipt && (
+        <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
+          <div className="relative w-full max-w-sm">
+            <LayawayReceipt layaway={receipt.layaway} payment={receipt.payment} />
+            <div className="mt-4 flex gap-2">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="inline-flex h-10 flex-1 items-center justify-center gap-2 bg-north-primary text-sm text-white"
+              >
+                <Printer className="h-4 w-4" />
+                Imprimir ticket
+              </button>
+              <button
+                type="button"
+                onClick={() => setReceipt(null)}
+                className="h-10 flex-1 border border-north-border bg-white text-sm"
+              >
+                Cerrar
+              </button>
+            </div>
           </div>
         </div>
       )}
