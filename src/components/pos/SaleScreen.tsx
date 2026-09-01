@@ -145,7 +145,6 @@ export function SaleScreen() {
   } = usePos();
 
   const [query, setQuery] = useState("");
-  const [barcode, setBarcode] = useState("");
   const [barcodeMsg, setBarcodeMsg] = useState("");
   const [pickProduct, setPickProduct] = useState<PosProduct | null>(null);
   const [pickProductId, setPickProductId] = useState<string | null>(null);
@@ -202,13 +201,14 @@ export function SaleScreen() {
     setPickProductId(null);
   }
 
-  function handleBarcodeSubmit(e: React.FormEvent) {
+  function handleSearchSubmit(e: React.FormEvent) {
     e.preventDefault();
-    const code = barcode.trim();
+    const code = query.trim();
     if (!code) return;
     const ok = addByBarcode(code);
-    setBarcodeMsg(ok ? `Agregado: ${code}` : `Código no encontrado: ${code}`);
-    setBarcode("");
+    if (!ok) return;
+    setBarcodeMsg(`Agregado: ${code}`);
+    setQuery("");
     barcodeRef.current?.focus();
     setTimeout(() => setBarcodeMsg(""), 2000);
   }
@@ -222,31 +222,21 @@ export function SaleScreen() {
               Nueva venta
             </h1>
 
-            <form onSubmit={handleBarcodeSubmit} className="relative mt-4">
+            <form onSubmit={handleSearchSubmit} className="relative mt-4">
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-north-steel" />
               <input
                 ref={barcodeRef}
-                type="text"
-                value={barcode}
-                onChange={(e) => setBarcode(e.target.value)}
-                placeholder="Escanear código de barras..."
-                className="h-12 w-full border-2 border-north-primary/30 bg-north-primary/5 px-4 text-sm font-medium outline-none focus:border-north-primary"
+                type="search"
+                value={query}
+                onChange={(e) => setQuery(e.target.value)}
+                placeholder="Buscar producto o escanear código..."
+                className="h-12 w-full border-2 border-north-primary/30 bg-north-background pl-11 pr-4 text-sm outline-none focus:border-north-primary"
                 autoComplete="off"
               />
               {barcodeMsg && (
                 <p className="mt-1 text-xs text-north-primary">{barcodeMsg}</p>
               )}
             </form>
-
-            <div className="relative mt-3">
-              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-north-steel" />
-              <input
-                type="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar producto..."
-                className="h-11 w-full border border-north-border bg-north-background pl-11 pr-4 text-sm outline-none focus:border-north-primary"
-              />
-            </div>
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
