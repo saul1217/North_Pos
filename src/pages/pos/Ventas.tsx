@@ -14,6 +14,7 @@ import { TicketReceipt } from "@/components/pos/TicketReceipt";
 export default function PosVentasPage() {
   const { sales, cancelSale, processReturn } = usePos();
   const [query, setQuery] = useState("");
+  const [saleType, setSaleType] = useState("todos");
   const [selected, setSelected] = useState<CompletedSale | null>(null);
   const [ticketSale, setTicketSale] = useState<CompletedSale | null>(null);
   const [returnMode, setReturnMode] = useState(false);
@@ -24,9 +25,20 @@ export default function PosVentasPage() {
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return sales;
-    return sales.filter((s) => s.folio.toLowerCase().includes(q));
-  }, [sales, query]);
+    const prefixes: Record<string, string> = {
+      venta: "nb-",
+      web: "web-",
+      taller: "taller-",
+      apartado: "ap-",
+    };
+    const prefix = prefixes[saleType];
+    return sales.filter((sale) => {
+      const folio = sale.folio.toLowerCase();
+      if (prefix && !folio.startsWith(prefix)) return false;
+      if (!q) return true;
+      return prefix ? folio.slice(prefix.length).includes(q) : folio.includes(q);
+    });
+  }, [sales, saleType, query]);
 
   function startReturn() {
     if (!selected) return;
@@ -64,15 +76,29 @@ export default function PosVentasPage() {
             <h1 className="font-display text-2xl font-bold uppercase tracking-[0.06em]">
               Ventas
             </h1>
-            <div className="relative mt-4 max-w-md">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
+            <div className="mt-4 flex max-w-lg gap-2">
+              <select
+                value={saleType}
+                onChange={(e) => setSaleType(e.target.value)}
+                className="h-10 border border-north-border bg-north-background px-2 text-sm"
+                aria-label="Tipo de venta"
+              >
+                <option value="todos">Todas</option>
+                <option value="venta">Venta</option>
+                <option value="web">Web</option>
+                <option value="taller">Taller</option>
+                <option value="apartado">Apartado</option>
+              </select>
+              <div className="relative min-w-0 flex-1">
+                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
               <input
                 type="search"
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
-                placeholder="Buscar por folio..."
+                placeholder="Número o código..."
                 className="h-10 w-full border border-north-border bg-north-background pl-10 pr-3 text-sm"
               />
+              </div>
             </div>
           </header>
 
