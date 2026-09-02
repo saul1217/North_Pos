@@ -90,7 +90,9 @@ function sendUpdateStatus(status, extra = {}) {
 function setupAutoUpdater() {
   if (isDev) return;
 
-  autoUpdater.autoDownload = false;
+  // Descarga y prepara las actualizaciones automáticamente. Cuando termina,
+  // se instala al reiniciar sin mostrar el asistente de NSIS.
+  autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
   autoUpdater.allowPrerelease = false;
 
@@ -106,6 +108,7 @@ function setupAutoUpdater() {
   });
   autoUpdater.on("update-downloaded", (info) => {
     sendUpdateStatus("downloaded", { version: info.version });
+    setTimeout(() => autoUpdater.quitAndInstall(true, true), 500);
   });
   autoUpdater.on("error", (error) => {
     console.error("Auto-update error:", error);
