@@ -888,7 +888,59 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             </div>
             <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Variantes</h3><p className="text-xs text-north-muted">Talla, rueda, color o modelo con stock propio.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar variante</button></div>
-              <div className="mt-3 space-y-3">{form.variants.map((variant, index) => <div key={variant.id} className="grid gap-2 border border-north-border bg-north-background p-3 md:grid-cols-4"><input aria-label="Etiqueta de variante" placeholder="Etiqueta (Talla M / Negro)" value={variant.label} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, label: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="SKU de variante" placeholder="SKU" value={variant.sku} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, sku: e.target.value, barcode: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="UPC de variante" placeholder="UPC global (opcional)" value={variant.upc ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, upc: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Talla" placeholder="Talla" value={variant.size ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, size: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Rueda" placeholder="Rueda (29)" value={variant.wheelSize ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, wheelSize: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Color" placeholder="Color" value={variant.color ?? ""} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, color: e.target.value } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Precio de variante" type="number" min="0" placeholder="Precio" value={variant.price} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, price: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><input aria-label="Stock de variante" type="number" min="0" placeholder="Stock" value={variant.stock} onChange={(e) => setForm({ ...form, variants: form.variants.map((v, i) => i === index ? { ...v, stock: Number(e.target.value) || 0 } : v) })} className="h-9 border border-north-border bg-white px-2 text-xs" /><button type="button" onClick={() => setForm({ ...form, variants: form.variants.filter((_, i) => i !== index) })} className="h-9 text-left text-xs text-red-700">Eliminar variante</button></div>)}</div>
+              <div className="mt-3 space-y-3">
+                {form.variants.map((variant, index) => {
+                  const update = (patch: Partial<ProductVariant>) =>
+                    setForm((current) => ({
+                      ...current,
+                      variants: current.variants.map((item, itemIndex) =>
+                        itemIndex === index ? { ...item, ...patch } : item,
+                      ),
+                    }));
+
+                  return (
+                    <div key={variant.id} className="border border-north-border bg-north-background p-3">
+                      <div className="mb-3 flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold">Variante {index + 1}</p>
+                          <p className="text-xs text-north-muted">Define sus datos comerciales y su existencia independiente.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setForm((current) => ({ ...current, variants: current.variants.filter((_, itemIndex) => itemIndex !== index) }))}
+                          className="text-xs text-red-700 hover:underline"
+                        >
+                          Eliminar
+                        </button>
+                      </div>
+                      <div className="grid gap-3 md:grid-cols-2">
+                        <label className="text-xs font-semibold text-north-steel">Nombre de la variante
+                          <input aria-label="Nombre de la variante" placeholder="Ej. Rojo / Talla M" value={variant.label} onChange={(e) => update({ label: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">SKU de la variante
+                          <input aria-label="SKU de la variante" placeholder="Ej. BICI-ROJA-M" value={variant.sku} onChange={(e) => update({ sku: e.target.value, barcode: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">UPC global <span className="font-normal">(opcional)</span>
+                          <input aria-label="UPC global de la variante" placeholder="Código del fabricante" value={variant.upc ?? ""} onChange={(e) => update({ upc: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">Atributos
+                          <div className="mt-1 grid grid-cols-3 gap-1">
+                            <input aria-label="Talla de la variante" placeholder="Talla" value={variant.size ?? ""} onChange={(e) => update({ size: e.target.value })} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm font-normal" />
+                            <input aria-label="Rueda de la variante" placeholder="Rueda" value={variant.wheelSize ?? ""} onChange={(e) => update({ wheelSize: e.target.value })} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm font-normal" />
+                            <input aria-label="Color de la variante" placeholder="Color" value={variant.color ?? ""} onChange={(e) => update({ color: e.target.value })} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm font-normal" />
+                          </div>
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">Precio de esta variante
+                          <input aria-label="Precio de esta variante" type="number" min="0" step="0.01" placeholder="0.00" value={variant.price} onChange={(e) => update({ price: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">Existencia de esta variante
+                          <input aria-label="Existencia de esta variante" type="number" min="0" placeholder="0" value={variant.stock} onChange={(e) => update({ stock: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </section>
             <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Números de serie</h3><p className="text-xs text-north-muted">Registra cada bicicleta individual.</p></div><button type="button" onClick={addSerialUnit} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar serie</button></div>
