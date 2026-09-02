@@ -68,7 +68,16 @@ export function syncProducts(input: ProductSyncState, accessToken?: string | nul
     return {
       ...cleanProduct,
       variants: variants.map((variant) => {
-        const { createdAt: _variantCreatedAt, updatedAt: _variantUpdatedAt, ...cleanVariant } = variant as typeof variant & { createdAt?: string; updatedAt?: string };
+        const {
+          createdAt: _variantCreatedAt,
+          updatedAt: _variantUpdatedAt,
+          productId: _variantProductId,
+          ...cleanVariant
+        } = variant as typeof variant & {
+          createdAt?: string;
+          updatedAt?: string;
+          productId?: string;
+        };
         return cleanVariant;
       }),
       serialUnits: serialUnits.map((unit) => {
