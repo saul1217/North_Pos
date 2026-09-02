@@ -12,6 +12,8 @@ export default function PosApartadosPage() {
     usePos();
   const [query, setQuery] = useState("");
   const [showNew, setShowNew] = useState(false);
+  const [showProductPicker, setShowProductPicker] = useState(false);
+  const [productQuery, setProductQuery] = useState("");
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deposit, setDeposit] = useState("");
@@ -37,6 +39,17 @@ export default function PosApartadosPage() {
         l.customer.name.toLowerCase().includes(q),
     );
   }, [layaways, query]);
+
+  const availableProducts = useMemo(() => {
+    const q = productQuery.trim().toLowerCase();
+    return products.filter((p) => {
+      if (p.status !== "activo" || p.stock <= 0) return false;
+      if (!q) return true;
+      return [p.name, p.sku, p.upc, p.barcode].some((value) =>
+        value?.toLowerCase().includes(q),
+      );
+    });
+  }, [products, productQuery]);
 
   function toggleProduct(p: PosProduct) {
     setSelectedProducts((prev) => {
@@ -202,25 +215,26 @@ export default function PosApartadosPage() {
             <p className="mt-4 text-xs font-semibold uppercase text-north-steel">
               Productos
             </p>
-            <div className="mt-2 max-h-48 space-y-1 overflow-y-auto">
-              {products
-                .filter((p) => p.status === "activo" && p.stock > 0)
-                .slice(0, 12)
-                .map((p) => (
-                  <label
-                    key={p.id}
-                    className="flex cursor-pointer items-center gap-2 border border-north-border px-2 py-2 text-sm"
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedProducts.some(
-                        (x) => x.product.id === p.id,
-                      )}
-                      onChange={() => toggleProduct(p)}
-                    />
-                    {p.name} — {formatPosPrice(p.price)}
-                  </label>
-                ))}
+            <div className="mt-2 border border-north-border bg-north-background px-3 py-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span>
+                  {selectedProducts.length
+                    ? `${selectedProducts.length} producto${selectedProducts.length === 1 ? "" : "s"} seleccionado${selectedProducts.length === 1 ? "" : "s"}`
+                    : "Ningún producto seleccionado"}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setShowProductPicker(true)}
+                  className="border border-north-primary px-3 py-2 text-xs font-semibold text-north-primary"
+                >
+                  Buscar productos
+                </button>
+              </div>
+              {selectedProducts.length > 0 && (
+                <p className="mt-2 text-xs text-north-muted">
+                  {selectedProducts.map(({ product }) => product.name).join(", ")}
+                </p>
+              )}
             </div>
             <button
               type="button"
@@ -228,6 +242,76 @@ export default function PosApartadosPage() {
               className="mt-4 h-10 w-full bg-north-primary text-sm text-white"
             >
               Crear apartado
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showProductPicker && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-north-dark/60"
+            onClick={() => setShowProductPicker(false)}
+          />
+          <div className="relative flex max-h-[85vh] w-full max-w-xl flex-col bg-white p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h3 className="font-display text-lg font-bold">Buscar productos</h3>
+                <p className="mt-1 text-xs text-north-muted">
+                  Busca por nombre, SKU, UPC o código local.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowProductPicker(false)}
+                className="h-10 px-2 text-sm text-north-muted hover:text-black"
+              >
+                Cerrar
+              </button>
+            </div>
+            <div className="relative mt-4">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
+              <input
+                autoFocus
+                value={productQuery}
+                onChange={(e) => setProductQuery(e.target.value)}
+                placeholder="Buscar producto..."
+                className="h-10 w-full border border-north-border pl-10 pr-3 text-sm"
+              />
+            </div>
+            <div className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
+              {availableProducts.length === 0 && (
+                <p className="py-8 text-center text-sm text-north-muted">
+                  No se encontraron productos.
+                </p>
+              )}
+              {availableProducts.map((p) => (
+                <label
+                  key={p.id}
+                  className="flex cursor-pointer items-center justify-between gap-3 border border-north-border px-3 py-2 text-sm hover:bg-north-background"
+                >
+                  <span>
+                    <input
+                      className="mr-2"
+                      type="checkbox"
+                      checked={selectedProducts.some((x) => x.product.id === p.id)}
+                      onChange={() => toggleProduct(p)}
+                    />
+                    {p.name}
+                    <span className="ml-2 text-xs text-north-muted">{p.sku}</span>
+                  </span>
+                  <span className="font-semibold text-north-primary">
+                    {formatPosPrice(p.price)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowProductPicker(false)}
+              className="mt-4 h-10 w-full bg-north-primary text-sm text-white"
+            >
+              Usar productos seleccionados ({selectedProducts.length})
             </button>
           </div>
         </div>
