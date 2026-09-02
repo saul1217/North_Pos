@@ -44,7 +44,7 @@ function AuthenticatedPosLayout() {
 
   return (
     <div className="pos-shell flex h-screen overflow-hidden bg-north-background">
-      <PosSidebar onLogout={logout} username={session.user.username} role={session.user.role} />
+      <PosSidebar onLogout={logout} role={session.user.role} />
       <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
         <SyncBar />
         <UpdateBanner />
