@@ -186,6 +186,10 @@ export function verifyEmail(code: string): Promise<{ ok: true; email: string; em
   return request<{ ok: true; email: string; emailVerified: true }>("/api/auth/email/verify", { method: "POST", body: JSON.stringify({ code }) });
 }
 
+export function setInitialPassword(newPassword: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/password/initial", { method: "POST", body: JSON.stringify({ newPassword }) });
+}
+
 export function requestPasswordChange(): Promise<{ ok: true }> {
   return request<{ ok: true }>("/api/auth/password/change/request", { method: "POST" });
 }
