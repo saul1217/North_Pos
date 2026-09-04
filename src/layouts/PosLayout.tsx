@@ -33,7 +33,7 @@ function AuthenticatedPosLayout() {
   if (!session) {
     return <AuthScreen onLogin={(next) => { setSession(next); void refreshCatalog(); }} />;
   }
-  if (session.user.mustChangePassword) return <ChangePasswordScreen session={session} onChanged={setSession} />;
+  if (session.user.mustChangePassword || !session.user.emailVerified) return <ChangePasswordScreen session={session} onChanged={setSession} />;
 
   if (!canAccess(session.user.role, pathname)) return <Navigate to={defaultPath(session.user.role)} replace />;
 

@@ -177,3 +177,27 @@ export function updateUser(id: string, input: { role?: AuthSession["user"]["role
 export function changePassword(currentPassword: string, newPassword: string): Promise<{ ok: true }> {
   return request<{ ok: true }>("/api/users/me/password", { method: "POST", body: JSON.stringify({ currentPassword, newPassword }) });
 }
+
+export function requestEmailVerification(email: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/email/request", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+export function verifyEmail(code: string): Promise<{ ok: true; email: string; emailVerified: true }> {
+  return request<{ ok: true; email: string; emailVerified: true }>("/api/auth/email/verify", { method: "POST", body: JSON.stringify({ code }) });
+}
+
+export function requestPasswordChange(): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/password/change/request", { method: "POST" });
+}
+
+export function confirmPasswordChange(code: string, newPassword: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/password/change/confirm", { method: "POST", body: JSON.stringify({ code, newPassword }) });
+}
+
+export function requestPasswordReset(email: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/password/reset/request", { method: "POST", body: JSON.stringify({ email }) });
+}
+
+export function confirmPasswordReset(email: string, code: string, newPassword: string): Promise<{ ok: true }> {
+  return request<{ ok: true }>("/api/auth/password/reset/confirm", { method: "POST", body: JSON.stringify({ email, code, newPassword }) });
+}
