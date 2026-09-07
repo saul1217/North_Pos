@@ -1,7 +1,7 @@
 {
   "name": "northbike-pos",
   "private": true,
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "Punto de venta de escritorio para North Bike",
   "author": "North Bike",
   "type": "module",
@@ -29,7 +29,7 @@
       "**/node_modules/better-sqlite3/**"
     ],
     "directories": {
-      "output": "C:/Users/ramos/AppData/Local/nb-pos-release"
+      "output": "release"
     },
     "win": {
       "icon": "public/public/brand/logo.ico",
