@@ -10,6 +10,7 @@ import { clearAuthSession, getAuthSession, type AuthSession } from "@/lib/auth";
 import { usePos } from "@/context/PosContext";
 import { canAccess, defaultPath } from "@/lib/permissions";
 import { UpdateBanner } from "@/components/UpdateBanner";
+import { ContextualHelpButton, OnboardingProvider } from "@/features/onboarding/OnboardingProvider";
 
 export function PosLayout() {
   return (
@@ -43,13 +44,16 @@ function AuthenticatedPosLayout() {
   }
 
   return (
-    <div className="pos-shell flex h-screen overflow-hidden bg-north-background">
-      <PosSidebar onLogout={logout} role={session.user.role} />
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
-        <SyncBar />
-        <UpdateBanner />
-        <Outlet />
+    <OnboardingProvider session={session}>
+      <div className="pos-shell flex h-screen overflow-hidden bg-north-background">
+        <PosSidebar onLogout={logout} role={session.user.role} />
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
+          <SyncBar />
+          <UpdateBanner />
+          <Outlet />
+        </div>
+        <ContextualHelpButton />
       </div>
-    </div>
+    </OnboardingProvider>
   );
 }

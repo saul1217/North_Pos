@@ -440,6 +440,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             <button
               type="button"
               onClick={openReceipt}
+              data-guide="products.receipt"
               className="inline-flex h-10 items-center gap-2 border border-north-primary px-4 text-sm font-semibold text-north-primary transition hover:bg-north-primary/5 focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2"
             >
               <PackagePlus className="h-4 w-4" />
@@ -449,6 +450,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
               <button
                 type="button"
                 onClick={openCreate}
+                data-guide="products.create"
                 className="inline-flex h-10 items-center gap-2 bg-north-primary/80 px-4 text-sm font-semibold text-white transition hover:bg-north-primary focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2"
               >
                 <Plus className="h-4 w-4" />
@@ -686,7 +688,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             </div>
 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
-              <form onSubmit={scanInventoryUpc} className="border border-north-border bg-north-background p-4">
+              <form onSubmit={scanInventoryUpc} className="border border-north-border bg-north-background p-4" data-guide="receipt.scan">
                 <label htmlFor="inventory-upc" className="text-sm font-semibold">
                   UPC global
                 </label>
@@ -836,6 +838,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                   type="button"
                   onClick={() => void confirmReceipt()}
                   disabled={receiptSaving || receiptLines.length === 0 || hasUnassignedVariant}
+                  data-guide="receipt.confirm"
                   className="inline-flex h-11 items-center gap-2 bg-north-primary px-5 text-sm font-semibold text-white hover:bg-north-primary/90 focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
                   {receiptSaving ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
@@ -859,7 +862,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
               </div>
               <button type="button" onClick={() => setFormOpen(false)} className="p-2 text-north-muted" aria-label="Cerrar formulario"><X className="h-5 w-5" /></button>
             </div>
-            <div className="grid gap-4 p-5 md:grid-cols-2">
+            <div className="grid gap-4 p-5 md:grid-cols-2" data-guide="products.form.identity">
               <label className="text-sm font-medium">Nombre<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value, barcode: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /><span className="mt-1 block text-xs font-normal text-north-muted">Identificador interno. El código local se genera con este valor.</span></label>
               <label className="text-sm font-medium">Categoría<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductForm["category"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal">{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="mt-2 flex gap-2"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCategory(); } }} placeholder="Nueva categoría" className="h-9 min-w-0 flex-1 border border-north-border px-2 text-xs font-normal" /><button type="button" onClick={addCategory} className="h-9 border border-north-primary px-2 text-xs font-semibold text-north-primary">Agregar</button></span></label>
@@ -949,7 +952,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             {formError && <p className="mx-5 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
             <div className="flex justify-end gap-2 border-t border-north-border px-5 py-4">
               <button type="button" onClick={() => setFormOpen(false)} className="h-10 border border-north-border px-4 text-sm font-semibold">Cancelar</button>
-              <button type="submit" disabled={saving} className="h-10 bg-north-primary px-5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Guardando..." : "Guardar producto"}</button>
+              <button type="submit" disabled={saving} data-guide="products.form.save" className="h-10 bg-north-primary px-5 text-sm font-semibold text-white disabled:opacity-50">{saving ? "Guardando..." : "Guardar producto"}</button>
             </div>
           </form>
         </div>

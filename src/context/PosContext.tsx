@@ -62,6 +62,7 @@ import {
   type ProductInput,
 } from "@/lib/catalog/api";
 import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/auth";
+import { emitOnboardingMilestone } from "@/features/onboarding/events";
 
 type PosStore = PosPersistedState & {
   currentSale: CurrentSale;
@@ -186,6 +187,12 @@ function recordStockChange(
   return { products: nextProducts, movement };
 }
 
+export type SaleAddResult = {
+  lineId: string;
+  change: "added" | "incremented";
+  name: string;
+};
+
 type PosContextValue = {
   products: PosProduct[];
   catalogLoading: boolean;
@@ -208,10 +215,10 @@ type PosContextValue = {
     product: PosProduct,
     variant?: ProductVariant,
     serialNumber?: string,
-  ) => void;
-  addByBarcode: (code: string) => boolean;
+  ) => SaleAddResult | null;
+  addByBarcode: (code: string) => SaleAddResult | null;
   removeFromSale: (lineId: string) => void;
-  setLineQuantity: (lineId: string, quantity: number) => void;
+  setLineQuantity: (lineId: string, quantity: number) => boolean;
   setLineDiscount: (lineId: string, discount?: LineDiscount) => void;
   setDiscount: (discount: number, type?: "percent" | "fixed") => void;
   openCheckout: () => void;
@@ -429,6 +436,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     }
     const product = makeLocalProduct(input);
     persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
+    emitOnboardingMilestone("product-created");
     // La copia local es inmediata. La confirmación remota no debe bloquear el
     // formulario; al terminar reemplazamos el id local por el canónico.
     void createProductApi(input)
@@ -512,20 +520,20 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const addToSale = useCallback(
     (product: PosProduct, variant?: ProductVariant, serialNumber?: string) => {
-      if (product.status === "inactivo") return;
+      if (product.status === "inactivo") return null;
       const variantId = variant?.id;
       const stock = getAvailableStock(product, variantId);
-      if (stock <= 0) return;
+      if (stock <= 0) return null;
 
-      if (product.requiresSerial && !serialNumber) return;
+      if (product.requiresSerial && !serialNumber) return null;
 
       const lineId = makeLineId(product.id, variantId, serialNumber);
       const items = [...store.currentSale.items];
       const existing = items.find((i) => i.lineId === lineId);
 
       if (existing) {
-        if (product.requiresSerial) return;
-        if (existing.quantity >= stock) return;
+        if (product.requiresSerial) return null;
+        if (existing.quantity >= stock) return null;
         existing.quantity += 1;
       } else {
         items.push({
@@ -542,24 +550,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
       }
 
       persist({ currentSale: { ...store.currentSale, items } });
+      return {
+        lineId,
+        change: existing ? "incremented" : "added",
+        name: product.name,
+      } satisfies SaleAddResult;
     },
     [],
   );
 
   const addByBarcode = useCallback((code: string) => {
     const found = findByBarcode(store.products, code);
-    if (!found) return false;
+    if (!found) return null;
     const { product, variant } = found;
     if (product.requiresSerial && variant) {
       const serial = product.serialUnits.find(
         (s) => s.variantId === variant.id && s.status === "disponible",
       );
-      if (!serial) return false;
-      addToSale(product, variant, serial.serialNumber);
-      return true;
+      if (!serial) return null;
+      return addToSale(product, variant, serial.serialNumber);
     }
-    addToSale(product, variant);
-    return true;
+    return addToSale(product, variant);
   }, [addToSale]);
 
   const removeFromSale = useCallback((lineId: string) => {
@@ -573,25 +584,28 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const setLineQuantity = useCallback((lineId: string, quantity: number) => {
     const item = store.currentSale.items.find((i) => i.lineId === lineId);
-    if (!item) return;
+    if (!item) return false;
     const product = store.products.find((p) => p.id === item.productId);
-    if (!product) return;
-    if (product.requiresSerial) return;
+    if (!product) return false;
+    if (product.requiresSerial) return false;
     if (quantity <= 0) {
       removeFromSale(lineId);
-      return;
+      return true;
     }
     const max = getAvailableStock(product, item.variantId);
+    const nextQuantity = Math.min(quantity, max);
+    if (nextQuantity === item.quantity) return false;
     persist({
       currentSale: {
         ...store.currentSale,
         items: store.currentSale.items.map((i) =>
           i.lineId === lineId
-            ? { ...i, quantity: Math.min(quantity, max) }
+            ? { ...i, quantity: nextQuantity }
             : i,
         ),
       },
     });
+    return true;
   }, [removeFromSale]);
 
   const setLineDiscount = useCallback(
@@ -689,6 +703,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         checkoutOpen: false,
         successOpen: true,
       });
+      emitOnboardingMilestone("sale-completed");
 
       return sale;
     },
@@ -896,7 +911,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
       receivedUnits += quantity;
     }
 
-    if (receivedUnits > 0) persist({ products, movements });
+    if (receivedUnits > 0) {
+      persist({ products, movements });
+      emitOnboardingMilestone("inventory-received");
+    }
     return receivedUnits;
   }, []);
 
@@ -1149,6 +1167,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         ],
         workshopFolioCounter: store.workshopFolioCounter + 1,
       });
+      emitOnboardingMilestone("workshop-received");
 
       void syncWorkshopOrders();
 

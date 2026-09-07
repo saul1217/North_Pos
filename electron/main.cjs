@@ -51,6 +51,8 @@ ipcMain.handle("pos:saveState", (_event, dataJson) => {
   db.saveState(dataJson);
   return true;
 });
+ipcMain.handle("pos:loadOnboardingProgress", (_event, userId) => db.loadOnboardingProgress(userId));
+ipcMain.handle("pos:saveOnboardingProgress", (_event, userId, dataJson) => db.saveOnboardingProgress(userId, dataJson));
 ipcMain.handle("pos:dbPath", () => db.dbPath());
 ipcMain.handle("pos:exportBackup", async () => {
   const stamp = new Date().toISOString().replace(/[:.]/g, "-");

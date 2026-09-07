@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld("pos", {
   // startup — keeps the existing sync hydrate path); save is async.
   loadStateSync: () => ipcRenderer.sendSync("pos:loadStateSync"),
   saveState: (dataJson) => ipcRenderer.invoke("pos:saveState", dataJson),
+  loadOnboardingProgress: (userId) => ipcRenderer.invoke("pos:loadOnboardingProgress", userId),
+  saveOnboardingProgress: (userId, dataJson) => ipcRenderer.invoke("pos:saveOnboardingProgress", userId, dataJson),
   dbPath: () => ipcRenderer.invoke("pos:dbPath"),
   exportBackup: () => ipcRenderer.invoke("pos:exportBackup"),
   importBackup: () => ipcRenderer.invoke("pos:importBackup"),

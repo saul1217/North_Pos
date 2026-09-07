@@ -16,6 +16,13 @@ function getDb() {
          id INTEGER PRIMARY KEY CHECK (id = 1),
          data TEXT NOT NULL,
          updated_at TEXT NOT NULL
+       );
+       CREATE TABLE IF NOT EXISTS onboarding_progress (
+         user_id TEXT NOT NULL,
+         tutorial_id TEXT NOT NULL,
+         data TEXT NOT NULL,
+         updated_at TEXT NOT NULL,
+         PRIMARY KEY (user_id, tutorial_id)
        );`,
     );
   }
@@ -41,6 +48,48 @@ function saveState(dataJson) {
        ON CONFLICT(id) DO UPDATE SET data = @data, updated_at = @ts`,
     )
     .run({ data: dataJson, ts: new Date().toISOString() });
+}
+
+// Keep learning progress separate from operational sales and inventory state.
+function loadOnboardingProgress(userId) {
+  const rows = getDb()
+    .prepare("SELECT tutorial_id, data FROM onboarding_progress WHERE user_id = ?")
+    .all(userId);
+  if (!rows.length) return null;
+
+  const profile = rows.find((row) => row.tutorial_id === "__profile__");
+  if (!profile) return null;
+  try {
+    const data = JSON.parse(profile.data);
+    const tutorials = {};
+    for (const row of rows) {
+      if (row.tutorial_id === "__profile__") continue;
+      tutorials[row.tutorial_id] = JSON.parse(row.data);
+    }
+    return JSON.stringify({ ...data, tutorials });
+  } catch {
+    return null;
+  }
+}
+
+function saveOnboardingProgress(userId, dataJson) {
+  const progress = JSON.parse(dataJson);
+  const now = new Date().toISOString();
+  const save = getDb().transaction(() => {
+    const database = getDb();
+    database.prepare("DELETE FROM onboarding_progress WHERE user_id = ?").run(userId);
+    database
+      .prepare("INSERT INTO onboarding_progress (user_id, tutorial_id, data, updated_at) VALUES (?, ?, ?, ?)")
+      .run(userId, "__profile__", JSON.stringify({ ...progress, tutorials: undefined }), now);
+    const tutorials = progress.tutorials || {};
+    for (const [tutorialId, tutorial] of Object.entries(tutorials)) {
+      database
+        .prepare("INSERT INTO onboarding_progress (user_id, tutorial_id, data, updated_at) VALUES (?, ?, ?, ?)")
+        .run(userId, tutorialId, JSON.stringify(tutorial), now);
+    }
+  });
+  save();
+  return true;
 }
 
 async function exportBackup(destination) {
@@ -83,4 +132,4 @@ function restoreBackup(source) {
   return { path: current, safetyBackup };
 }
 
-module.exports = { getDb, dbPath, loadState, saveState, exportBackup, restoreBackup };
+module.exports = { getDb, dbPath, loadState, saveState, loadOnboardingProgress, saveOnboardingProgress, exportBackup, restoreBackup };

@@ -127,7 +127,7 @@ export function CheckoutModal() {
           <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-wider text-north-steel">
             Pagos mixtos
           </p>
-          <div className="space-y-3">
+          <div className="space-y-3" data-guide="checkout.payment">
             {splits.map((split, index) => (
               <div key={index} className="flex gap-2">
                 <select
@@ -215,6 +215,7 @@ export function CheckoutModal() {
             type="button"
             onClick={handleConfirm}
             disabled={pending > 0.01}
+            data-guide="checkout.confirm"
             className="h-11 flex-1 bg-north-primary text-sm font-semibold text-white disabled:opacity-40"
           >
             Confirmar cobro

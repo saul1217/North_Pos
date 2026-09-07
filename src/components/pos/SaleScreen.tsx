@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import { Minus, Plus, Search, Trash2 } from "lucide-react";
-import { useMemo, useRef, useState } from "react";
-import { usePos } from "@/context/PosContext";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { usePos, type SaleAddResult } from "@/context/PosContext";
 import {
   getCategoryLabel,
   formatPosPrice,
@@ -35,6 +35,7 @@ function ProductTile({
   return (
     <button
       type="button"
+      data-guide="sale.catalog"
       disabled={disabled}
       onClick={onAdd}
       className="group flex flex-col overflow-hidden rounded-sm border border-north-border bg-white text-left transition hover:border-north-primary disabled:cursor-not-allowed disabled:opacity-50"
@@ -149,7 +150,13 @@ export function SaleScreen() {
   const [pickProduct, setPickProduct] = useState<PosProduct | null>(null);
   const [pickProductId, setPickProductId] = useState<string | null>(null);
   const [pickVariant, setPickVariant] = useState<ProductVariant | null>(null);
+  const [cartFeedback, setCartFeedback] = useState<(SaleAddResult & { tick: number }) | null>(null);
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -172,12 +179,19 @@ export function SaleScreen() {
     );
   }, [products, query]);
 
+  function showCartFeedback(result: SaleAddResult | null) {
+    if (!result) return;
+    if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    setCartFeedback((previous) => ({ ...result, tick: (previous?.tick ?? 0) + 1 }));
+    feedbackTimeoutRef.current = setTimeout(() => setCartFeedback(null), 460);
+  }
+
   function handleProductClick(product: PosProduct) {
     if (product.hasVariants && product.variants.length > 0) {
       setPickProduct(product);
       return;
     }
-    addToSale(product);
+    showCartFeedback(addToSale(product));
   }
 
   function handleVariantSelect(variant: ProductVariant) {
@@ -188,7 +202,7 @@ export function SaleScreen() {
       setPickProduct(null);
       return;
     }
-    addToSale(pickProduct, variant);
+    showCartFeedback(addToSale(pickProduct, variant));
     setPickProduct(null);
   }
 
@@ -196,7 +210,7 @@ export function SaleScreen() {
     if (!pickVariant || !pickProductId) return;
     const product = products.find((p) => p.id === pickProductId);
     if (!product) return;
-    addToSale(product, pickVariant, serial);
+    showCartFeedback(addToSale(product, pickVariant, serial));
     setPickVariant(null);
     setPickProductId(null);
   }
@@ -205,9 +219,10 @@ export function SaleScreen() {
     e.preventDefault();
     const code = query.trim();
     if (!code) return;
-    const ok = addByBarcode(code);
-    if (!ok) return;
-    setBarcodeMsg(`Agregado: ${code}`);
+    const result = addByBarcode(code);
+    if (!result) return;
+    showCartFeedback(result);
+    setBarcodeMsg(`Agregado: ${result.name}`);
     setQuery("");
     barcodeRef.current?.focus();
     setTimeout(() => setBarcodeMsg(""), 2000);
@@ -222,7 +237,7 @@ export function SaleScreen() {
               Nueva venta
             </h1>
 
-            <form onSubmit={handleSearchSubmit} className="relative mt-4">
+            <form onSubmit={handleSearchSubmit} className="relative mt-4" data-guide="sale.search">
               <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-north-steel" />
               <input
                 ref={barcodeRef}
@@ -252,12 +267,12 @@ export function SaleScreen() {
           </div>
         </div>
 
-        <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-north-border bg-white lg:w-[26rem] lg:border-l lg:border-t-0">
+        <aside className="flex min-h-0 w-full shrink-0 flex-col border-t border-north-border bg-white lg:w-[26rem] lg:border-l lg:border-t-0" data-guide="sale.cart">
           <div className="border-b border-north-border px-4 py-4">
             <h2 className="font-display text-lg font-bold uppercase tracking-[0.08em]">
               Venta actual
             </h2>
-            <p className="text-sm text-north-muted">
+            <p className={`text-sm text-north-muted ${cartFeedback ? `sale-cart-count--pulse-${cartFeedback.tick % 2}` : ""}`}>
               {itemCount} {itemCount === 1 ? "artículo" : "artículos"}
             </p>
           </div>
@@ -274,7 +289,7 @@ export function SaleScreen() {
                   return (
                     <li
                       key={item.lineId}
-                      className="border-b border-north-border pb-4"
+                      className={`border-b border-north-border pb-4 ${cartFeedback?.lineId === item.lineId ? `sale-cart-line--${cartFeedback.change}-${cartFeedback.tick % 2}` : ""}`}
                     >
                       <div className="flex gap-2">
                         <div className="min-w-0 flex-1">
@@ -344,9 +359,11 @@ export function SaleScreen() {
                               <button
                                 type="button"
                                 className="flex h-full w-7 items-center justify-center"
-                                onClick={() =>
-                                  setLineQuantity(item.lineId, item.quantity + 1)
-                                }
+                                onClick={() => {
+                                  if (setLineQuantity(item.lineId, item.quantity + 1)) {
+                                    showCartFeedback({ lineId: item.lineId, change: "incremented", name: item.name });
+                                  }
+                                }}
                               >
                                 <Plus className="h-3 w-3" />
                               </button>
@@ -413,6 +430,7 @@ export function SaleScreen() {
               type="button"
               disabled={currentSale.items.length === 0}
               onClick={openCheckout}
+              data-guide="sale.checkout"
               className="h-12 w-full bg-north-primary text-sm font-semibold uppercase tracking-wider text-white hover:bg-north-primary-hover disabled:opacity-40"
             >
               Cobrar
@@ -420,6 +438,10 @@ export function SaleScreen() {
           </div>
         </aside>
       </div>
+
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {cartFeedback ? `${cartFeedback.name} ${cartFeedback.change === "added" ? "agregado al carrito" : "actualizado en el carrito"}` : ""}
+      </p>
 
       {pickProduct && (
         <VariantPickerModal

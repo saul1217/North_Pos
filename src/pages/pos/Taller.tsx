@@ -321,6 +321,7 @@ export default function PosTallerPage() {
                   setSelected(null);
                   setSaveMessage("");
                 }}
+                data-guide="workshop.new"
                 className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
               >
                 {view === "list" ? (
@@ -691,7 +692,7 @@ export default function PosTallerPage() {
               Nueva recepción
             </h2>
 
-            <section className="mb-6 space-y-3">
+            <section className="mb-6 space-y-3" data-guide="workshop.customer">
               <p className="text-xs font-semibold uppercase text-north-steel">
                 Cliente
               </p>
@@ -715,7 +716,7 @@ export default function PosTallerPage() {
               />
             </section>
 
-            <section className="mb-6 space-y-3">
+            <section className="mb-6 space-y-3" data-guide="workshop.bike">
               <p className="text-xs font-semibold uppercase text-north-steel">
                 Bicicleta
               </p>
@@ -784,7 +785,7 @@ export default function PosTallerPage() {
               )}
             </section>
 
-            <section className="mb-6">
+            <section className="mb-6" data-guide="workshop.checklist">
               <p className="mb-2 text-xs font-semibold uppercase text-north-steel">
                 Checklist configurable *
               </p>
@@ -829,6 +830,7 @@ export default function PosTallerPage() {
             <button
               type="button"
               onClick={submitReception}
+              data-guide="workshop.submit"
               className="h-12 w-full bg-north-primary text-sm font-semibold text-white"
             >
               Completar recepción

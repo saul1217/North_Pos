@@ -17,6 +17,7 @@ import {
   Users,
   Download,
   Printer,
+  CircleHelp,
 } from "lucide-react";
 import type { AuthUser } from "@/lib/auth";
 import { allowedPaths } from "@/lib/permissions";
@@ -32,6 +33,7 @@ const nav = [
   { href: "/pos/cotizaciones", label: "Cotizaciones", icon: FileText },
   { href: "/pos/taller", label: "Taller", icon: Wrench },
   { href: "/pos/analiticas", label: "Analíticas", icon: LineChart },
+  { href: "/pos/ayuda", label: "Ayuda y guías", icon: CircleHelp },
 ];
 
 export function PosSidebar({ onLogout, role }: { onLogout: () => void; role: AuthUser["role"] }) {
