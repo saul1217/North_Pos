@@ -434,20 +434,13 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (getAuthSession()?.user.role !== "admin") {
       throw new Error("Solo un administrador puede crear productos.");
     }
-    const product = makeLocalProduct(input);
-    persist({ products: [...store.products, product].sort((a, b) => a.name.localeCompare(b.name)) });
+    // El servidor asigna el SKU definitivo. No persistimos un producto
+    // provisional: una etiqueta impresa debe corresponder siempre al código
+    // que existe en el catálogo central.
+    const product = await createProductApi(input);
+    persist({ products: [...store.products.filter((item) => item.id !== product.id && item.sku !== product.sku), product].sort((a, b) => a.name.localeCompare(b.name)) });
     emitOnboardingMilestone("product-created");
-    // La copia local es inmediata. La confirmación remota no debe bloquear el
-    // formulario; al terminar reemplazamos el id local por el canónico.
-    void createProductApi(input)
-      .then((remoteProduct) => {
-        persist({
-          products: [...store.products.filter((item) => item.id !== product.id && item.sku !== remoteProduct.sku), remoteProduct]
-            .sort((a, b) => a.name.localeCompare(b.name)),
-        });
-        void refreshCatalog();
-      })
-      .catch(() => void refreshCatalog());
+    void refreshCatalog();
     return product;
   }, [refreshCatalog]);
 
@@ -455,16 +448,12 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (getAuthSession()?.user.role !== "admin") {
       throw new Error("Solo un administrador puede editar productos.");
     }
-    const current = store.products.find((item) => item.id === id);
-    if (!current) throw new Error("El producto ya no existe.");
-    const product = makeLocalProduct(input, current);
+    if (!store.products.some((item) => item.id === id)) throw new Error("El producto ya no existe.");
+    // Las variantes nuevas también reciben SKU en el servidor, por eso la
+    // respuesta remota es la única copia que se conserva.
+    const product = await updateProductApi(id, input);
     persist({ products: store.products.map((item) => item.id === id ? product : item) });
-    void updateProductApi(id, input)
-      .then((remoteProduct) => {
-        persist({ products: store.products.map((item) => item.id === id ? remoteProduct : item) });
-        void refreshCatalog();
-      })
-      .catch(() => void refreshCatalog());
+    void refreshCatalog();
     return product;
   }, [refreshCatalog]);
 
@@ -1370,34 +1359,6 @@ function mergeProducts(local: PosProduct[], remote: PosProduct[], deleted: Set<s
 function productTime(product: PosProduct) {
   const value = product.updatedAt ? Date.parse(product.updatedAt) : 0;
   return Number.isFinite(value) ? value : 0;
-}
-
-function makeLocalProduct(input: ProductInput, current?: PosProduct): PosProduct {
-  return {
-    ...input,
-    id: current?.id ?? crypto.randomUUID(),
-    updatedAt: new Date().toISOString(),
-    stock: input.stock ?? 0,
-    location: current?.location ?? "",
-    upc: input.upc ?? "",
-    barcode: input.sku,
-    image: input.image ?? "",
-    images: input.images ?? [],
-    hasVariants: input.hasVariants ?? Boolean(input.variants?.length),
-    variants: (input.variants ?? []).map((variant) => ({
-      ...variant,
-      id: variant.id ?? crypto.randomUUID(),
-      upc: variant.upc ?? "",
-      barcode: variant.sku,
-      location: variant.location ?? "",
-    })),
-    requiresSerial: input.requiresSerial ?? false,
-    serialUnits: (input.serialUnits ?? []).map((unit) => ({
-      ...unit,
-      id: unit.id ?? crypto.randomUUID(),
-      location: unit.location ?? "",
-    })),
-  };
 }
 
 function saleProgress(sale: CompletedSale) {

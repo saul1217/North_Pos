@@ -2,10 +2,18 @@ import { API_BASE } from "@/lib/sync/sync";
 import type { PosProduct, ProductVariant, WorkshopOrder } from "@/lib/pos/types";
 import { clearAuthSession, getAccessToken, type AuthSession } from "@/lib/auth";
 
-export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "location"> & {
+export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "location" | "sku" | "barcode" | "variants"> & {
+  sku?: string;
+  barcode?: string;
   stock?: number;
-  variants?: Array<Omit<ProductVariant, "id" | "location"> & { id?: string; location?: string }>;
+  variants?: Array<Omit<ProductVariant, "id" | "location" | "sku" | "barcode"> & { id?: string; location?: string; sku?: string; barcode?: string }>;
   serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id" | "location"> & { id?: string; location?: string }>;
+};
+
+export type SkuCategory = {
+  category: string;
+  prefix: string;
+  nextSequence: number;
 };
 
 export type ProductSyncState = {
@@ -53,6 +61,17 @@ export function login(username: string, password: string): Promise<AuthSession> 
 
 export function fetchProducts(): Promise<PosProduct[]> {
   return request<PosProduct[]>("/api/products");
+}
+
+export function fetchSkuCategories(): Promise<SkuCategory[]> {
+  return request<SkuCategory[]>("/api/products/sku-categories");
+}
+
+export function createSkuCategory(input: Pick<SkuCategory, "category" | "prefix">): Promise<SkuCategory> {
+  return request<SkuCategory>("/api/products/sku-categories", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
 }
 
 export function fetchProductSync(accessToken?: string | null): Promise<ProductSyncState> {

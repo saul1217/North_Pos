@@ -6,8 +6,8 @@ import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "
 import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice, getCategoryLabel } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
-import type { ProductInput } from "@/lib/catalog/api";
-import { uploadProductImage } from "@/lib/catalog/api";
+import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
+import { createSkuCategory, fetchSkuCategories, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
 
 type ProductForm = {
@@ -98,7 +98,11 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [productMessage, setProductMessage] = useState<string | null>(null);
   const [statusSaving, setStatusSaving] = useState<string | null>(null);
+  const [skuCategories, setSkuCategories] = useState<SkuCategory[]>([]);
   const [newCategory, setNewCategory] = useState("");
+  const [newCategoryPrefix, setNewCategoryPrefix] = useState("");
+  const [categoryError, setCategoryError] = useState<string | null>(null);
+  const [categorySaving, setCategorySaving] = useState(false);
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [receiptCode, setReceiptCode] = useState("");
   const [receiptLines, setReceiptLines] = useState<InventoryReceiptLine[]>([]);
@@ -123,11 +127,20 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   const categoryOptions = useMemo(() => {
     const options = new Map(Object.entries(categoryLabels));
+    skuCategories.forEach((category) => {
+      if (!options.has(category.category)) options.set(category.category, getCategoryLabel(category.category));
+    });
     products.forEach((product) => {
       if (!options.has(product.category)) options.set(product.category, getCategoryLabel(product.category));
     });
     return [...options.entries()].sort((a, b) => a[1].localeCompare(b[1], "es"));
-  }, [products]);
+  }, [products, skuCategories]);
+
+  const selectedSkuCategory = useMemo(
+    () => skuCategories.find((category) => category.category === form.category),
+    [form.category, skuCategories],
+  );
+  const skuPreview = selectedSkuCategory ? `${selectedSkuCategory.prefix}-####` : "Sin prefijo configurado";
 
   const receiptUnits = useMemo(
     () => receiptLines.reduce((sum, line) => sum + line.quantity, 0),
@@ -150,6 +163,20 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       window.removeEventListener("keydown", closeOnEscape);
     };
   }, [receiptOpen, receiptSaving]);
+
+  async function refreshSkuCategories() {
+    try {
+      setSkuCategories(await fetchSkuCategories());
+      setCategoryError(null);
+    } catch {
+      setCategoryError("No se pudieron cargar los prefijos de SKU. Verifica tu conexión.");
+    }
+  }
+
+  useEffect(() => {
+    if (!canManageProducts) return;
+    void refreshSkuCategories();
+  }, [canManageProducts]);
 
   function openReceipt() {
     setReceiptCode("");
@@ -293,6 +320,9 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     setFormError(null);
     setProductMessage(null);
     setNewCategory("");
+    setNewCategoryPrefix("");
+    setCategoryError(null);
+    void refreshSkuCategories();
     setFormOpen(true);
   }
 
@@ -306,12 +336,31 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     setFormOpen(true);
   }
 
-  function addCategory() {
+  async function addCategory() {
     const label = newCategory.trim().replace(/\s+/g, " ");
-    if (!label) return;
+    const prefix = newCategoryPrefix.trim().toUpperCase();
+    if (!label || !prefix) {
+      setCategoryError("Captura el nombre y un prefijo de tres letras.");
+      return;
+    }
     const value = label.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
-    setForm((current) => ({ ...current, category: value }));
-    setNewCategory("");
+    if (!/^[A-Z]{3}$/.test(prefix)) {
+      setCategoryError("El prefijo debe tener exactamente tres letras, por ejemplo REF.");
+      return;
+    }
+    setCategorySaving(true);
+    setCategoryError(null);
+    try {
+      const category = await createSkuCategory({ category: value, prefix });
+      setSkuCategories((current) => [...current.filter((item) => item.category !== category.category), category]);
+      setForm((current) => ({ ...current, category: category.category }));
+      setNewCategory("");
+      setNewCategoryPrefix("");
+    } catch (error) {
+      setCategoryError((error as Error).message || "No se pudo crear la categoría.");
+    } finally {
+      setCategorySaving(false);
+    }
   }
 
   async function toggleStatus(product: PosProduct) {
@@ -358,8 +407,12 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.name.trim() || !form.sku.trim() || Number(form.price) < 0) {
-      setFormError("Captura nombre, SKU y un precio válido.");
+    if (!form.name.trim() || Number(form.price) < 0) {
+      setFormError("Captura nombre y un precio válido.");
+      return;
+    }
+    if (!editing && !selectedSkuCategory) {
+      setFormError("Configura el prefijo de esta categoría antes de guardar.");
       return;
     }
     setSaving(true);
@@ -381,20 +434,20 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         .filter((result): result is PromiseFulfilledResult<{ bucket: string; path: string; url: string }> => result.status === "fulfilled")
         .map((result) => result.value);
       const input: ProductInput = {
-      sku: form.sku.trim(),
+      sku: editing ? form.sku.trim() : undefined,
       name: form.name.trim(),
       category: form.category,
       price: Number(form.price),
       stock: Number(form.stock) || 0,
       minStock: Number(form.minStock) || 0,
       upc: form.upc.trim(),
-      barcode: form.sku.trim(),
+      barcode: editing ? form.sku.trim() : undefined,
       image: imageUrl,
       images: [...form.images, ...uploadedGallery.map((image) => image.url)],
       status: form.status,
       hasVariants: form.variants.length > 0,
       requiresSerial: form.requiresSerial,
-      variants: form.variants.filter((variant) => variant.sku.trim() && variant.label.trim()).map((variant) => ({ ...variant, price: Number(variant.price) || 0, stock: Number(variant.stock) || 0, minStock: Number(variant.minStock) || 0 })),
+      variants: form.variants.filter((variant) => variant.label.trim()).map((variant) => ({ ...variant, price: Number(variant.price) || 0, stock: Number(variant.stock) || 0, minStock: Number(variant.minStock) || 0 })),
       serialUnits: form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
       };
       if (editing) await updateProduct(editing.id, input);
@@ -864,8 +917,23 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-2" data-guide="products.form.identity">
               <label className="text-sm font-medium">Nombre<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
-              <label className="text-sm font-medium">SKU<input required value={form.sku} onChange={(e) => setForm({ ...form, sku: e.target.value, barcode: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /><span className="mt-1 block text-xs font-normal text-north-muted">Identificador interno. El código local se genera con este valor.</span></label>
-              <label className="text-sm font-medium">Categoría<select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductForm["category"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal">{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select><span className="mt-2 flex gap-2"><input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addCategory(); } }} placeholder="Nueva categoría" className="h-9 min-w-0 flex-1 border border-north-border px-2 text-xs font-normal" /><button type="button" onClick={addCategory} className="h-9 border border-north-primary px-2 text-xs font-semibold text-north-primary">Agregar</button></span></label>
+              <div className="text-sm font-medium">
+                <span>{editing ? "SKU asignado" : "SKU automático"}</span>
+                <div className="mt-1 flex h-10 items-center border border-north-border bg-north-background px-3 font-mono text-sm text-north-ink" aria-live="polite">
+                  {editing ? form.sku : skuPreview}
+                </div>
+                <span className="mt-1 block text-xs font-normal text-north-muted">{editing ? "Identificador interno estable; no se puede modificar." : "El consecutivo definitivo se asigna al guardar en el catálogo central."}</span>
+              </div>
+              <label className="text-sm font-medium">Categoría
+                <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductForm["category"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal">{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
+                <span className="mt-2 grid gap-2 sm:grid-cols-[1fr_72px_auto]">
+                  <input value={newCategory} onChange={(e) => setNewCategory(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); void addCategory(); } }} placeholder="Nueva categoría" className="h-9 min-w-0 border border-north-border px-2 text-xs font-normal" />
+                  <input value={newCategoryPrefix} onChange={(e) => setNewCategoryPrefix(e.target.value.toUpperCase())} maxLength={3} placeholder="REF" aria-label="Prefijo de nueva categoría" className="h-9 min-w-0 border border-north-border px-2 font-mono text-xs font-normal uppercase" />
+                  <button type="button" onClick={() => void addCategory()} disabled={categorySaving} className="h-9 border border-north-primary px-2 text-xs font-semibold text-north-primary disabled:opacity-50">{categorySaving ? "..." : "Agregar"}</button>
+                </span>
+                <span className="mt-1 block text-xs font-normal text-north-muted">Nueva categoría: nombre y prefijo de tres letras.</span>
+                {categoryError && <span className="mt-1 block text-xs font-normal text-red-700" role="alert">{categoryError}</span>}
+              </label>
               <label className="text-sm font-medium">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock<input min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock mínimo<input min="0" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
@@ -920,9 +988,12 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                         <label className="text-xs font-semibold text-north-steel">Nombre de la variante
                           <input aria-label="Nombre de la variante" placeholder="Ej. Rojo / Talla M" value={variant.label} onChange={(e) => update({ label: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
-                        <label className="text-xs font-semibold text-north-steel">SKU de la variante
-                          <input aria-label="SKU de la variante" placeholder="Ej. BICI-ROJA-M" value={variant.sku} onChange={(e) => update({ sku: e.target.value, barcode: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
-                        </label>
+                        <div className="text-xs font-semibold text-north-steel">SKU de la variante
+                          <div className="mt-1 flex h-9 items-center border border-north-border bg-white px-2 font-mono text-sm font-normal text-north-ink">
+                            {variant.sku || `${editing && form.sku ? form.sku : skuPreview}-V##`}
+                          </div>
+                          <p className="mt-1 font-normal text-north-muted">Se asigna automáticamente al guardar.</p>
+                        </div>
                         <label className="text-xs font-semibold text-north-steel">UPC global <span className="font-normal">(opcional)</span>
                           <input aria-label="UPC global de la variante" placeholder="Código del fabricante" value={variant.upc ?? ""} onChange={(e) => update({ upc: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>

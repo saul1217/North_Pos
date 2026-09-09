@@ -7,7 +7,7 @@ export const tutorials: TutorialDefinition[] = [
     route: "/pos/productos", roles: ["admin"],
     steps: [
       { id: "open", title: "Abre el alta", body: "Selecciona Nuevo producto para registrar un artículo en el catálogo.", target: "products.create", advanceOn: "target" },
-      { id: "identity", title: "Identifica el producto", body: "Captura al menos nombre, SKU y precio. El UPC es opcional y sirve para recepción con lector.", target: "products.form.identity", advanceOn: "next" },
+      { id: "identity", title: "Identifica el producto", body: "Captura nombre, categoría y precio. El SKU se asigna automáticamente; el UPC es opcional y sirve para recepción con lector.", target: "products.form.identity", advanceOn: "next" },
       { id: "save", title: "Guarda cuando esté listo", body: "El producto quedará disponible para las operaciones del POS después de guardarlo.", target: "products.form.save", advanceOn: "milestone", milestone: "product-created" },
       { id: "done", title: "Producto registrado", body: "El catálogo ya tiene una base para vender. Puedes volver a ejecutar esta guía cuando lo necesites.", advanceOn: "next", nextLabel: "Finalizar" },
     ],
