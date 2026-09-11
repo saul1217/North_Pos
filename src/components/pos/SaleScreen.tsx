@@ -41,13 +41,19 @@ function ProductTile({
       className="group flex flex-col overflow-hidden rounded-sm border border-north-border bg-white text-left transition hover:border-north-primary disabled:cursor-not-allowed disabled:opacity-50"
     >
       <div className="relative aspect-square overflow-hidden bg-north-border">
-        <Image
-          src={product.image}
-          alt={product.name}
-          fill
-          className="object-cover transition group-hover:scale-[1.02]"
-          sizes="160px"
-        />
+        {product.image ? (
+          <Image
+            src={product.image}
+            alt={product.name}
+            fill
+            className="object-cover transition group-hover:scale-[1.02]"
+            sizes="160px"
+          />
+        ) : (
+          <div className="flex h-full items-center justify-center text-[10px] font-semibold uppercase tracking-wider text-north-muted">
+            Sin imagen
+          </div>
+        )}
         {status === "bajo" && (
           <span className="absolute left-1.5 top-1.5 bg-amber-600 px-1.5 py-0.5 text-[10px] font-semibold uppercase text-white">
             Stock bajo
@@ -68,7 +74,7 @@ function ProductTile({
         </p>
         <div className="mt-auto flex items-center justify-between pt-1">
           <span className="font-display text-sm font-bold text-north-primary">
-            {formatPosPrice(product.price)}
+            {product.hasVariants ? "Producto con variables" : formatPosPrice(product.price)}
           </span>
           <span className="text-[11px] text-north-muted">Stock: {stock}</span>
         </div>

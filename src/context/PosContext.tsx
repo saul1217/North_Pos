@@ -532,6 +532,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
           serialNumber,
           sku: variant?.sku ?? product.sku,
           name: product.name,
+          model: variant?.model ?? product.model,
           variantLabel: variant?.label,
           price: variant?.price ?? product.price,
           quantity: 1,

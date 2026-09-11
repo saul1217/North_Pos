@@ -54,7 +54,7 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
         <thead>
           <tr className="border-b border-gray-300 text-left">
             <th className="pb-1">Producto</th>
-            <th className="pb-1 text-center">Cant</th>
+            <th className="w-10 pb-1 pr-2 text-right">Cant</th>
             <th className="pb-1 text-right">Importe</th>
           </tr>
         </thead>
@@ -68,6 +68,9 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
                   <p>{item.name}</p>
                   {item.variantLabel && (
                     <p className="text-[10px] text-gray-500">{item.variantLabel}</p>
+                  )}
+                  {item.model && (
+                    <p className="text-[10px] text-gray-500">Modelo: {item.model}</p>
                   )}
                   {item.serialNumber && (
                     <p className="font-mono text-[10px] text-gray-500">
@@ -83,7 +86,7 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
                     </p>
                   )}
                 </td>
-                <td className="py-1.5 text-center">{item.quantity}</td>
+                <td className="w-10 py-1.5 pr-2 text-right align-top">{item.quantity}</td>
                 <td className="py-1.5 text-right">
                   {formatPosPrice(lineTotal(item))}
                 </td>

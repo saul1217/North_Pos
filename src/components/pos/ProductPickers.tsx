@@ -1,6 +1,8 @@
 "use client";
 
 import type { PosProduct, ProductVariant } from "@/lib/pos/types";
+import { formatPosPrice } from "@/lib/pos/format";
+import { X } from "lucide-react";
 
 export function VariantPickerModal({
   product,
@@ -15,7 +17,10 @@ export function VariantPickerModal({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-north-dark/60" onClick={onClose} />
       <div className="relative w-full max-w-md bg-white p-5 shadow-xl">
-        <h3 className="font-display text-lg font-bold uppercase tracking-wide">
+        <button type="button" onClick={onClose} className="absolute right-3 top-3 p-1 text-north-muted hover:text-north-dark" aria-label="Cerrar selector de variantes">
+          <X className="h-5 w-5" />
+        </button>
+        <h3 className="pr-8 font-display text-lg font-bold uppercase tracking-wide">
           Seleccionar variante
         </h3>
         <p className="mt-1 text-sm text-north-muted">{product.name}</p>
@@ -29,8 +34,9 @@ export function VariantPickerModal({
               className="flex w-full items-center justify-between border border-north-border px-3 py-3 text-left hover:border-north-primary disabled:opacity-40"
             >
               <span className="text-sm font-medium">{v.label}</span>
-              <span className="text-xs text-north-muted">
-                Stock: {v.stock}
+              <span className="flex flex-col items-end gap-0.5 text-xs text-north-muted">
+                <span className="font-semibold text-north-primary">{formatPosPrice(v.price)}</span>
+                <span>Stock: {v.stock}</span>
               </span>
             </button>
           ))}

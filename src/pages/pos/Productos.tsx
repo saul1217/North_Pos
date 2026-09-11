@@ -13,6 +13,8 @@ import { getAuthSession } from "@/lib/auth";
 type ProductForm = {
   sku: string;
   name: string;
+  hasModel: boolean;
+  model: string;
   category: PosProduct["category"];
   price: string;
   stock: string;
@@ -38,6 +40,8 @@ type InventoryReceiptLine = {
 const emptyForm: ProductForm = {
   sku: "",
   name: "",
+  hasModel: false,
+  model: "",
   category: "accesorios",
   price: "",
   stock: "0",
@@ -56,6 +60,8 @@ function formFromProduct(product: PosProduct): ProductForm {
   return {
     sku: product.sku,
     name: product.name,
+    hasModel: Boolean(product.model?.trim()),
+    model: product.model ?? "",
     category: product.category,
     price: String(product.price),
     stock: String(product.stock),
@@ -86,6 +92,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   const [query, setQuery] = useState("");
   const [expanded, setExpanded] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
+  const [formMode, setFormMode] = useState<"product" | "models">("product");
   const [editing, setEditing] = useState<PosProduct | null>(null);
   const [form, setForm] = useState<ProductForm>(emptyForm);
   const [imageFile, setImageFile] = useState<File | null>(null);
@@ -312,9 +319,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     }
   }
 
-  function openCreate() {
+  function openCreate(mode: "product" | "models" = "product") {
+    setFormMode(mode);
     setEditing(null);
-    setForm({ ...emptyForm, category: onlyCategory ?? emptyForm.category });
+    setForm({ ...emptyForm, category: onlyCategory ?? emptyForm.category, variants: mode === "models" ? [] : emptyForm.variants });
     setImageFile(null);
     setImageFiles([]);
     setFormError(null);
@@ -327,6 +335,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   }
 
   function openEdit(product: PosProduct) {
+    setFormMode(product.hasVariants ? "models" : "product");
     setEditing(product);
     setForm(formFromProduct(product));
     setImageFile(null);
@@ -370,6 +379,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       await updateProduct(product.id, {
         sku: product.sku,
         name: product.name,
+        model: product.model,
         category: product.category,
         price: product.price,
         minStock: product.minStock,
@@ -394,7 +404,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   function addVariant() {
     setForm((current) => ({
       ...current,
-      variants: [...current.variants, { id: crypto.randomUUID(), sku: "", barcode: "", label: "", price: Number(current.price) || 0, stock: 0, minStock: 0, location: "" }],
+      variants: [...current.variants, { id: crypto.randomUUID(), sku: "", barcode: "", label: "", model: "", price: 0, stock: 0, minStock: 0, location: "" }],
     }));
   }
 
@@ -407,8 +417,12 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.name.trim() || Number(form.price) < 0) {
-      setFormError("Captura nombre y un precio válido.");
+    if (!form.name.trim() || (formMode === "product" && Number(form.price) < 0)) {
+      setFormError(formMode === "models" ? "Captura el nombre general del producto." : "Captura nombre y un precio válido.");
+      return;
+    }
+    if (formMode === "models" && (form.variants.length === 0 || form.variants.some((variant) => !variant.label.trim()))) {
+      setFormError("Agrega al menos un modelo y completa el nombre de cada variante.");
       return;
     }
     if (!editing && !selectedSkuCategory) {
@@ -433,22 +447,34 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       const uploadedGallery = galleryResults
         .filter((result): result is PromiseFulfilledResult<{ bucket: string; path: string; url: string }> => result.status === "fulfilled")
         .map((result) => result.value);
+      const modelVariants = form.variants.filter((variant) => variant.label.trim()).map((variant) => {
+        const { productId: _productId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanVariant } = variant as ProductVariant & { productId?: string; createdAt?: string; updatedAt?: string };
+        return {
+          ...cleanVariant,
+          label: variant.label.trim(),
+          model: variant.model?.trim() || "",
+          price: Number(variant.price) || 0,
+          stock: Number(variant.stock) || 0,
+          minStock: Number(variant.minStock) || 0,
+        };
+      });
       const input: ProductInput = {
       sku: editing ? form.sku.trim() : undefined,
       name: form.name.trim(),
+      model: formMode === "product" && form.hasModel ? form.model.trim() : "",
       category: form.category,
-      price: Number(form.price),
-      stock: Number(form.stock) || 0,
-      minStock: Number(form.minStock) || 0,
-      upc: form.upc.trim(),
-      barcode: editing ? form.sku.trim() : undefined,
-      image: imageUrl,
-      images: [...form.images, ...uploadedGallery.map((image) => image.url)],
-      status: form.status,
-      hasVariants: form.variants.length > 0,
-      requiresSerial: form.requiresSerial,
-      variants: form.variants.filter((variant) => variant.label.trim()).map((variant) => ({ ...variant, price: Number(variant.price) || 0, stock: Number(variant.stock) || 0, minStock: Number(variant.minStock) || 0 })),
-      serialUnits: form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
+      price: formMode === "models" ? 0 : Number(form.price),
+      stock: formMode === "models" ? 0 : Number(form.stock) || 0,
+      minStock: formMode === "models" ? 0 : Number(form.minStock) || 0,
+      upc: formMode === "models" ? "" : form.upc.trim(),
+      barcode: formMode === "models" ? undefined : (editing ? form.sku.trim() : undefined),
+      image: formMode === "models" ? "" : imageUrl,
+      images: formMode === "models" ? [] : [...form.images, ...uploadedGallery.map((image) => image.url)],
+      status: formMode === "models" ? "activo" : form.status,
+      hasVariants: formMode === "models" || form.variants.length > 0,
+      requiresSerial: formMode === "models" ? false : form.requiresSerial,
+      variants: formMode === "models" ? modelVariants : [],
+      serialUnits: formMode === "models" ? [] : form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
       };
       if (editing) await updateProduct(editing.id, input);
       else await createProduct(input);
@@ -502,12 +528,22 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             {canManageProducts && (
               <button
                 type="button"
-                onClick={openCreate}
+                onClick={() => openCreate()}
                 data-guide="products.create"
                 className="inline-flex h-10 items-center gap-2 bg-north-primary/80 px-4 text-sm font-semibold text-white transition hover:bg-north-primary focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2"
               >
                 <Plus className="h-4 w-4" />
                 Nuevo producto
+              </button>
+            )}
+            {canManageProducts && (
+              <button
+                type="button"
+                onClick={() => openCreate("models")}
+                className="inline-flex h-10 items-center gap-2 border border-north-primary px-4 text-sm font-semibold text-north-primary transition hover:bg-north-primary/5 focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2"
+              >
+                <Plus className="h-4 w-4" />
+                Añadir modelos
               </button>
             )}
             <button
@@ -583,13 +619,19 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-3">
                           <div className="relative h-10 w-10 shrink-0 overflow-hidden bg-north-border">
-                            <Image
-                              src={product.image}
-                              alt=""
-                              fill
-                              className="object-cover"
-                              sizes="40px"
-                            />
+                            {product.image ? (
+                              <Image
+                                src={product.image}
+                                alt=""
+                                fill
+                                className="object-cover"
+                                sizes="40px"
+                              />
+                            ) : (
+                              <div className="flex h-full items-center justify-center text-[8px] font-semibold uppercase text-north-muted">
+                                Sin imagen
+                              </div>
+                            )}
                           </div>
                           <div>
                             <button
@@ -909,7 +951,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             <div className="flex items-center justify-between border-b border-north-border px-5 py-4">
               <div>
                 <h2 id="product-form-title" className="font-display text-lg font-bold uppercase tracking-[0.06em]">
-                  {editing ? "Editar producto" : "Nuevo producto"}
+                  {formMode === "models" ? (editing ? "Editar modelos" : "Añadir modelos") : (editing ? "Editar producto" : "Nuevo producto")}
                 </h2>
                 <p className="mt-1 text-xs text-north-muted">Los cambios se guardan en el catálogo central.</p>
               </div>
@@ -917,13 +959,13 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             </div>
             <div className="grid gap-4 p-5 md:grid-cols-2" data-guide="products.form.identity">
               <label className="text-sm font-medium">Nombre<input required value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
-              <div className="text-sm font-medium">
+              {formMode === "product" && <div className="text-sm font-medium">
                 <span>{editing ? "SKU asignado" : "SKU automático"}</span>
                 <div className="mt-1 flex h-10 items-center border border-north-border bg-north-background px-3 font-mono text-sm text-north-ink" aria-live="polite">
                   {editing ? form.sku : skuPreview}
                 </div>
                 <span className="mt-1 block text-xs font-normal text-north-muted">{editing ? "Identificador interno estable; no se puede modificar." : "El consecutivo definitivo se asigna al guardar en el catálogo central."}</span>
-              </div>
+              </div>}
               <label className="text-sm font-medium">Categoría
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductForm["category"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal">{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
                 <span className="mt-2 grid gap-2 sm:grid-cols-[1fr_72px_auto]">
@@ -934,12 +976,25 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                 <span className="mt-1 block text-xs font-normal text-north-muted">Nueva categoría: nombre y prefijo de tres letras.</span>
                 {categoryError && <span className="mt-1 block text-xs font-normal text-red-700" role="alert">{categoryError}</span>}
               </label>
-              <label className="text-sm font-medium">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
+              {formMode === "product" && <label className="text-sm font-medium">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>}
+              {formMode === "product" && <>
               <label className="text-sm font-medium">Stock<input min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock mínimo<input min="0" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">UPC (código global, opcional)<input value={form.upc} onChange={(e) => setForm({ ...form, upc: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /><span className="mt-1 block text-xs font-normal text-north-muted">Captúralo solo si lo proporciona el fabricante.</span></label>
               <label className="text-sm font-medium">Estado<select value={form.status} onChange={(e) => setForm({ ...form, status: e.target.value as ProductForm["status"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal"><option value="activo">Activo</option><option value="inactivo">Inactivo</option></select></label>
               <label className="flex items-center gap-2 self-end pb-2 text-sm font-medium"><input type="checkbox" checked={form.requiresSerial} onChange={(e) => setForm({ ...form, requiresSerial: e.target.checked })} /> Requiere número de serie</label>
+              <div className="text-sm font-medium">
+                <span>¿Se factura?</span>
+                <div className="mt-2 flex items-center gap-5 font-normal">
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={form.hasModel} onChange={() => setForm({ ...form, hasModel: true })} /> Sí
+                  </label>
+                  <label className="flex items-center gap-2">
+                    <input type="checkbox" checked={!form.hasModel} onChange={() => setForm({ ...form, hasModel: false, model: "" })} /> No
+                  </label>
+                </div>
+                {form.hasModel && <label className="mt-2 block text-sm font-medium">Modelo<input required value={form.model} onChange={(e) => setForm({ ...form, model: e.target.value })} placeholder="Ej. XLCM" className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>}
+              </div>
               <div className="md:col-span-2">
                 <label className="text-sm font-medium">Imagen del producto
                   <span className="mt-1 flex h-10 items-center gap-2 border border-north-border px-3 font-normal">
@@ -955,10 +1010,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                 </label>
                 {imageFiles.length > 0 && <p className="mt-1 text-xs text-north-primary">{imageFiles.length} imágenes nuevas seleccionadas</p>}
                 {form.images.length > 0 && <div className="mt-3 flex gap-2 overflow-x-auto">{form.images.map((url, index) => <div key={`${url}-${index}`} className="relative shrink-0"><img src={url} alt={`Imagen ${index + 2}`} className="h-14 w-14 object-cover" /><button type="button" onClick={() => setForm({ ...form, images: form.images.filter((_, i) => i !== index) })} className="absolute -right-1 -top-1 h-5 w-5 rounded-full bg-red-700 text-xs text-white" aria-label={`Eliminar imagen ${index + 2}`}>×</button></div>)}</div>}
-              </div>
+              </div></>}
             </div>
-            <section className="border-t border-north-border px-5 py-4">
-              <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Variantes</h3><p className="text-xs text-north-muted">Talla, rueda, color o modelo con stock propio.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar variante</button></div>
+            {formMode === "models" && <section className="border-t border-north-border px-5 py-4">
+              <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Modelos</h3><p className="text-xs text-north-muted">Cada modelo tiene su propio precio y existencia.</p></div><button type="button" onClick={addVariant} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar modelo</button></div>
               <div className="mt-3 space-y-3">
                 {form.variants.map((variant, index) => {
                   const update = (patch: Partial<ProductVariant>) =>
@@ -973,8 +1028,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                     <div key={variant.id} className="border border-north-border bg-north-background p-3">
                       <div className="mb-3 flex items-center justify-between gap-3">
                         <div>
-                          <p className="text-sm font-semibold">Variante {index + 1}</p>
-                          <p className="text-xs text-north-muted">Define sus datos comerciales y su existencia independiente.</p>
+                          <p className="text-sm font-semibold">Modelo {index + 1}</p>
+                          <p className="text-xs text-north-muted">Define su precio, existencia y stock mínimo.</p>
                         </div>
                         <button
                           type="button"
@@ -986,14 +1041,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                       </div>
                       <div className="grid gap-3 md:grid-cols-2">
                         <label className="text-xs font-semibold text-north-steel">Nombre de la variante
-                          <input aria-label="Nombre de la variante" placeholder="Ej. Rojo / Talla M" value={variant.label} onChange={(e) => update({ label: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                          <input required aria-label="Nombre de la variante" placeholder="Ej. Rojo / Talla M" value={variant.label} onChange={(e) => update({ label: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
-                        <div className="text-xs font-semibold text-north-steel">SKU de la variante
-                          <div className="mt-1 flex h-9 items-center border border-north-border bg-white px-2 font-mono text-sm font-normal text-north-ink">
-                            {variant.sku || `${editing && form.sku ? form.sku : skuPreview}-V##`}
-                          </div>
-                          <p className="mt-1 font-normal text-north-muted">Se asigna automáticamente al guardar.</p>
-                        </div>
                         <label className="text-xs font-semibold text-north-steel">UPC global <span className="font-normal">(opcional)</span>
                           <input aria-label="UPC global de la variante" placeholder="Código del fabricante" value={variant.upc ?? ""} onChange={(e) => update({ upc: e.target.value })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
@@ -1004,22 +1053,33 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                             <input aria-label="Color de la variante" placeholder="Color" value={variant.color ?? ""} onChange={(e) => update({ color: e.target.value })} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm font-normal" />
                           </div>
                         </label>
-                        <label className="text-xs font-semibold text-north-steel">Precio de esta variante
+                        <label className="text-xs font-semibold text-north-steel">Existencia
+                          <input aria-label="Existencia de esta variante" type="number" min="0" placeholder="0" value={variant.stock} onChange={(e) => update({ stock: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        </label>
+                        <label className="text-xs font-semibold text-north-steel">Precio
                           <input aria-label="Precio de esta variante" type="number" min="0" step="0.01" placeholder="0.00" value={variant.price} onChange={(e) => update({ price: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
-                        <label className="text-xs font-semibold text-north-steel">Existencia de esta variante
-                          <input aria-label="Existencia de esta variante" type="number" min="0" placeholder="0" value={variant.stock} onChange={(e) => update({ stock: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                        <div className="text-xs font-semibold text-north-steel">
+                          <span>¿Se factura?</span>
+                          <div className="mt-2 flex items-center gap-5 font-normal">
+                            <label className="flex items-center gap-2"><input type="checkbox" checked={variant.model !== undefined} onChange={() => update({ model: variant.model ?? "" })} /> Sí</label>
+                            <label className="flex items-center gap-2"><input type="checkbox" checked={variant.model === undefined} onChange={() => update({ model: undefined })} /> No</label>
+                          </div>
+                          {variant.model !== undefined && <input required aria-label="Modelo de la variante" placeholder="Ej. XLCM" value={variant.model} onChange={(e) => update({ model: e.target.value })} className="mt-2 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />}
+                        </div>
+                        <label className="text-xs font-semibold text-north-steel">Stock mínimo
+                          <input aria-label="Stock mínimo de la variante" type="number" min="0" placeholder="0" value={variant.minStock} onChange={(e) => update({ minStock: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
                       </div>
                     </div>
                   );
                 })}
               </div>
-            </section>
-            <section className="border-t border-north-border px-5 py-4">
+            </section>}
+            {formMode === "product" && <section className="border-t border-north-border px-5 py-4">
               <div className="flex items-center justify-between"><div><h3 className="font-display text-base font-bold uppercase">Números de serie</h3><p className="text-xs text-north-muted">Registra cada bicicleta individual.</p></div><button type="button" onClick={addSerialUnit} className="h-9 border border-north-border px-3 text-xs font-semibold">+ Agregar serie</button></div>
               <div className="mt-3 space-y-2">{form.serialUnits.map((unit, index) => <div key={unit.id} className="grid gap-2 md:grid-cols-[1fr_180px_auto]"><input aria-label="Número de serie" placeholder="Número de serie" value={unit.serialNumber} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, serialNumber: e.target.value } : s) })} className="h-9 border border-north-border px-2 text-xs" /><select aria-label="Variante de serie" value={unit.variantId ?? ""} onChange={(e) => setForm({ ...form, serialUnits: form.serialUnits.map((s, i) => i === index ? { ...s, variantId: e.target.value || undefined } : s) })} className="h-9 border border-north-border bg-white px-2 text-xs"><option value="">Producto base</option>{form.variants.map((variant) => <option key={variant.id} value={variant.id}>{variant.label || "Variante sin etiqueta"}</option>)}</select><button type="button" onClick={() => setForm({ ...form, serialUnits: form.serialUnits.filter((_, i) => i !== index) })} className="h-9 text-xs text-red-700">Eliminar</button></div>)}</div>
-            </section>
+            </section>}
             {formError && <p className="mx-5 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700">{formError}</p>}
             <div className="flex justify-end gap-2 border-t border-north-border px-5 py-4">
               <button type="button" onClick={() => setFormOpen(false)} className="h-10 border border-north-border px-4 text-sm font-semibold">Cancelar</button>

@@ -38,6 +38,7 @@ export type PosProduct = {
   updatedAt?: string;
   sku: string;
   name: string;
+  model?: string;
   category: PosProductCategory;
   price: number;
   stock: number;
@@ -61,6 +62,7 @@ export type SaleLineItem = {
   serialNumber?: string;
   sku: string;
   name: string;
+  model?: string;
   variantLabel?: string;
   price: number;
   quantity: number;
