@@ -8,10 +8,11 @@ import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
 import type { PosProduct, Quotation, SaleLineItem } from "@/lib/pos/types";
 import Image from "next/image";
 import { logoSrc } from "@/lib/brand";
+import { printTicket } from "@/lib/pos/printTicket";
 
 function QuotePrint({ quote }: { quote: Quotation }) {
   return (
-    <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
+    <div data-pos-ticket="print" className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
         <Image src={logoSrc} alt="North Bike" width={56} height={56} className="mx-auto mb-2 h-12 w-12 object-contain" />
         <p className="font-display text-lg font-bold uppercase">North Bike</p>
@@ -285,13 +286,13 @@ export default function PosCotizacionesPage() {
       )}
 
       {printQuote && (
-        <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="w-full max-w-md">
             <QuotePrint quote={printQuote} />
-            <div className="mt-4 flex gap-2">
+            <div className="pos-no-print mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => void printTicket()}
                 className="h-10 flex-1 bg-north-primary text-sm text-white"
               >
                 Imprimir

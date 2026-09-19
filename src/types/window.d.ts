@@ -19,6 +19,15 @@ declare global {
       dbPath: () => Promise<string>;
       exportBackup: () => Promise<{ canceled: boolean; path?: string }>;
       importBackup: () => Promise<{ canceled: boolean; path?: string; safetyBackup?: string }>;
+      printTicket: (payload: {
+        lines: Array<{
+          text?: string;
+          align?: "left" | "center" | "right";
+          bold?: boolean;
+          double?: boolean;
+          sep?: boolean;
+        }>;
+      }) => Promise<{ ok: boolean; deviceName: string | null; error?: string }>;
       updates?: {
         check: () => Promise<{ status: string; version?: string }>;
         download: () => Promise<boolean>;
