@@ -261,11 +261,14 @@ function saleToTicketLines(sale: CompletedSale): TicketPrintLine[] {
   return lines;
 }
 
-async function sendTicketLines(lines: TicketPrintLine[]): Promise<PrintResult> {
+async function sendTicketLines(
+  lines: TicketPrintLine[],
+  options?: { silent?: boolean },
+): Promise<PrintResult> {
   const ipcPrint = window.pos?.printTicket;
   if (typeof ipcPrint !== "function") {
     const message = "La impresión térmica solo está disponible en la app de escritorio";
-    window.alert(message);
+    if (!options?.silent) window.alert(message);
     return { ok: false, deviceName: null, error: message };
   }
 
@@ -281,19 +284,22 @@ async function sendTicketLines(lines: TicketPrintLine[]): Promise<PrintResult> {
     const message = /no-ticket-html|no-ticket-lines/i.test(raw)
       ? "Reinicia la app del POS e intenta imprimir de nuevo"
       : raw;
-    window.alert(`No se pudo imprimir el ticket: ${message}`);
+    if (options?.silent) {
+      console.warn("[printTicket]", message);
+    } else {
+      window.alert(`No se pudo imprimir el ticket: ${message}`);
+    }
   }
   return result ?? { ok: false, deviceName: null, error: "sin-respuesta" };
 }
 
-/** Imprime al cobrar, con los datos de la venta. No espera el modal ni el HTML. */
+/** Imprime al cobrar. Si no hay térmica, la venta sigue sin alertas. */
 export async function printSaleTicket(sale: CompletedSale): Promise<PrintResult> {
   try {
-    return await sendTicketLines(saleToTicketLines(sale));
+    return await sendTicketLines(saleToTicketLines(sale), { silent: true });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo imprimir";
-    console.error("[printSaleTicket]", err);
-    window.alert(`No se pudo imprimir el ticket: ${message}`);
+    console.warn("[printSaleTicket]", err);
     return { ok: false, deviceName: null, error: message };
   }
 }
