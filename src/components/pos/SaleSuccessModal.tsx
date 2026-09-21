@@ -70,17 +70,6 @@ export function SaleSuccessModal() {
           >
             Ver ticket
           </button>
-          <button
-            type="button"
-            onClick={() => {
-              closeSuccess();
-              openTicket();
-              setTimeout(() => window.print(), 300);
-            }}
-            className="h-11 border border-north-border text-sm font-medium hover:bg-north-background"
-          >
-            Imprimir ticket
-          </button>
         </div>
       </div>
     </div>

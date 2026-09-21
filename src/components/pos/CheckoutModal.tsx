@@ -5,6 +5,7 @@ import { X } from "lucide-react";
 import { usePos } from "@/context/PosContext";
 import { formatPosPrice, paymentMethodLabels } from "@/lib/pos/inventory";
 import type { PaymentMethod, PaymentSplit } from "@/lib/pos/types";
+import { printSaleTicket } from "@/lib/pos/printTicket";
 
 const methods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
 
@@ -76,6 +77,7 @@ export function CheckoutModal() {
       setError("No se pudo registrar el cobro. Verifica que el pago coincida con el total.");
       return;
     }
+    void printSaleTicket(sale);
     setSplits([{ method: "efectivo", amount: 0 }]);
     setCashReceived("");
     setError("");

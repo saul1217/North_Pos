@@ -11,7 +11,7 @@ export function TicketReceipt({ sale }: { sale: CompletedSale }) {
   const date = new Date(sale.date);
 
   return (
-    <div className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
+    <div data-pos-ticket="print" className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
       <div className="text-center">
         <Image
           src={logoSrc}

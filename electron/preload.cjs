@@ -20,6 +20,7 @@ contextBridge.exposeInMainWorld("pos", {
   dbPath: () => ipcRenderer.invoke("pos:dbPath"),
   exportBackup: () => ipcRenderer.invoke("pos:exportBackup"),
   importBackup: () => ipcRenderer.invoke("pos:importBackup"),
+  printTicket: (payload) => ipcRenderer.invoke("pos:printTicket", payload),
   updates: {
     check: () => ipcRenderer.invoke("updates:check"),
     download: () => ipcRenderer.invoke("updates:download"),
