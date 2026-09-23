@@ -33,9 +33,6 @@
     },
     "win": {
       "icon": "public/public/brand/logo.ico",
-      "signtoolOptions": {
-        "certificateSubjectName": "North Bike POS (Local)"
-      },
       "verifyUpdateCodeSignature": true,
       "target": [
         "nsis"
