@@ -45,4 +45,18 @@ jobs:
           CSC_KEY_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: |
           npm run build
-          npx electron-builder --win nsis --publish always
+          npx electron-builder --win nsis --publish never
+
+      - name: Upload release files
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.BETA_GH_TOKEN }}
+        run: |
+          $tag = $env:GITHUB_REF_NAME
+          $repo = "saul1217/North-pos-beta"
+          gh release view $tag --repo $repo 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $args = @("release", "create", $tag, "--repo", $repo, "--title", $tag, "--notes", "North Bike POS $tag", "--prerelease")
+            gh @args
+          }
+          gh release upload $tag --repo $repo release\North-Bike-POS-Setup-*.exe release\latest.yml release\*.blockmap --clobber
