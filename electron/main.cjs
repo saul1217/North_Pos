@@ -2,6 +2,11 @@ const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron")
 const { autoUpdater } = require("electron-updater");
 const fs = require("node:fs");
 const path = require("node:path");
+
+// Las instalaciones de pruebas usan un perfil local separado de producción.
+// Así no reutilizan el pos.db ni la sesión guardada del cliente.
+app.setPath("userData", path.join(app.getPath("appData"), "North Bike POS Pruebas"));
+
 const db = require("./db.cjs");
 
 function authPath() {
