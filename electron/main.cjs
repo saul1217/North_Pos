@@ -15,14 +15,22 @@ function authPath() {
   return path.join(app.getPath("userData"), "auth.bin");
 }
 
+function authPlainPath() {
+  return path.join(app.getPath("userData"), "auth.plain.json");
+}
+
 ipcMain.on("pos:loadAuthSessionSync", (event) => {
   try {
-    if (!safeStorage.isEncryptionAvailable() || !fs.existsSync(authPath())) {
-      event.returnValue = null;
+    if (safeStorage.isEncryptionAvailable() && fs.existsSync(authPath())) {
+      const encrypted = fs.readFileSync(authPath(), "utf8");
+      event.returnValue = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
       return;
     }
-    const encrypted = fs.readFileSync(authPath(), "utf8");
-    event.returnValue = safeStorage.decryptString(Buffer.from(encrypted, "base64"));
+    if (fs.existsSync(authPlainPath())) {
+      event.returnValue = fs.readFileSync(authPlainPath(), "utf8");
+      return;
+    }
+    event.returnValue = null;
   } catch (err) {
     console.error("pos:loadAuthSessionSync error:", err);
     event.returnValue = null;
@@ -30,14 +38,20 @@ ipcMain.on("pos:loadAuthSessionSync", (event) => {
 });
 
 ipcMain.handle("pos:saveAuthSession", (_event, dataJson) => {
-  if (!safeStorage.isEncryptionAvailable()) throw new Error("El almacén seguro de Windows no está disponible");
-  const encrypted = safeStorage.encryptString(dataJson).toString("base64");
-  fs.writeFileSync(authPath(), encrypted, { encoding: "utf8", mode: 0o600 });
-  return true;
+  if (safeStorage.isEncryptionAvailable()) {
+    const encrypted = safeStorage.encryptString(dataJson).toString("base64");
+    fs.writeFileSync(authPath(), encrypted, { encoding: "utf8", mode: 0o600 });
+    if (fs.existsSync(authPlainPath())) fs.rmSync(authPlainPath());
+    return { ok: true, encrypted: true };
+  }
+  console.warn("pos:saveAuthSession: safeStorage unavailable, using plaintext auth.plain.json");
+  fs.writeFileSync(authPlainPath(), dataJson, { encoding: "utf8", mode: 0o600 });
+  return { ok: true, encrypted: false };
 });
 
 ipcMain.handle("pos:clearAuthSession", () => {
   if (fs.existsSync(authPath())) fs.rmSync(authPath());
+  if (fs.existsSync(authPlainPath())) fs.rmSync(authPlainPath());
   return true;
 });
 
