@@ -8,11 +8,10 @@ import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
 import type { PosProduct, Quotation, SaleLineItem } from "@/lib/pos/types";
 import Image from "next/image";
 import { logoSrc } from "@/lib/brand";
-import { printTicket } from "@/lib/pos/printTicket";
 
 function QuotePrint({ quote }: { quote: Quotation }) {
   return (
-    <div data-pos-ticket="print" className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
+    <div className="pos-ticket-print mx-auto max-w-md bg-white p-6 text-black">
       <div className="text-center">
         <Image src={logoSrc} alt="North Bike" width={56} height={56} className="mx-auto mb-2 h-12 w-12 object-contain" />
         <p className="font-display text-lg font-bold uppercase">North Bike</p>
@@ -70,6 +69,7 @@ export default function PosCotizacionesPage() {
   const [printQuote, setPrintQuote] = useState<Quotation | null>(null);
   const [customerName, setCustomerName] = useState("");
   const [notes, setNotes] = useState("");
+  const [formError, setFormError] = useState("");
   const [selected, setSelected] = useState<
     { product: PosProduct; qty: number }[]
   >([]);
@@ -99,6 +99,11 @@ export default function PosCotizacionesPage() {
   }
 
   function submitQuote() {
+    setFormError("");
+    if (selected.length === 0) {
+      setFormError("Agrega al menos un producto para generar la cotización.");
+      return;
+    }
     const items: SaleLineItem[] = selected.map(({ product, qty }) => ({
       lineId: makeLineId(product.id),
       productId: product.id,
@@ -107,14 +112,14 @@ export default function PosCotizacionesPage() {
       price: product.price,
       quantity: qty,
     }));
-    if (items.length === 0) return;
     createQuotation({
-      customer: customerName ? { name: customerName } : undefined,
+      customer: customerName.trim() ? { name: customerName.trim() } : undefined,
       items,
       notes,
     });
     setShowNew(false);
     setShowProductPicker(false);
+    setFormError("");
     setSelected([]);
     setCustomerName("");
     setNotes("");
@@ -135,7 +140,10 @@ export default function PosCotizacionesPage() {
             </div>
             <button
               type="button"
-              onClick={() => setShowNew(true)}
+              onClick={() => {
+                setFormError("");
+                setShowNew(true);
+              }}
               className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
             >
               <Plus className="h-4 w-4" />
@@ -245,6 +253,11 @@ export default function PosCotizacionesPage() {
               </div>
               {selected.length > 0 && <p className="mt-2 text-xs text-north-muted">{selected.map(({ product }) => product.name).join(", ")}</p>}
             </div>
+            {formError && (
+              <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {formError}
+              </p>
+            )}
             <button
               type="button"
               onClick={submitQuote}
@@ -286,13 +299,13 @@ export default function PosCotizacionesPage() {
       )}
 
       {printQuote && (
-        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
+        <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="w-full max-w-md">
             <QuotePrint quote={printQuote} />
-            <div className="pos-no-print mt-4 flex gap-2">
+            <div className="mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => void printTicket()}
+                onClick={() => window.print()}
                 className="h-10 flex-1 bg-north-primary text-sm text-white"
               >
                 Imprimir
