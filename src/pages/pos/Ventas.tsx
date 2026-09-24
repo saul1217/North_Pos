@@ -320,18 +320,18 @@ export default function PosVentasPage() {
         <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="relative w-full max-w-sm">
             <TicketReceipt sale={ticketSale} />
-            <div className="pos-no-print mt-4 flex gap-2">
+            <div className="pos-no-print mt-4 grid w-full grid-cols-2 gap-2">
               <button
                 type="button"
                 onClick={() => ticketSale && void printSaleTicket(ticketSale)}
-                className="h-10 flex-1 bg-north-primary text-sm text-white"
+                className="h-11 w-full bg-north-primary text-sm font-semibold text-white hover:bg-north-primary-hover"
               >
                 Imprimir
               </button>
               <button
                 type="button"
                 onClick={() => setTicketSale(null)}
-                className="h-10 flex-1 border border-north-border bg-white text-sm"
+                className="h-11 w-full border border-north-border bg-white text-sm font-semibold hover:bg-north-background"
               >
                 Cerrar
               </button>

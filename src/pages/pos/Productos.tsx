@@ -417,13 +417,26 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   async function submitForm(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!form.name.trim() || (formMode === "product" && Number(form.price) < 0)) {
-      setFormError(formMode === "models" ? "Captura el nombre general del producto." : "Captura nombre y un precio válido.");
+    if (!form.name.trim()) {
+      setFormError(formMode === "models" ? "Captura el nombre general del producto." : "Captura el nombre del producto.");
       return;
     }
-    if (formMode === "models" && (form.variants.length === 0 || form.variants.some((variant) => !variant.label.trim()))) {
-      setFormError("Agrega al menos un modelo y completa el nombre de cada variante.");
-      return;
+    if (formMode === "product") {
+      const price = Number(form.price);
+      if (!Number.isFinite(price) || price <= 0) {
+        setFormError("El precio debe ser mayor a 0.");
+        return;
+      }
+    }
+    if (formMode === "models") {
+      if (form.variants.length === 0 || form.variants.some((variant) => !variant.label.trim())) {
+        setFormError("Agrega al menos un modelo y completa el nombre de cada variante.");
+        return;
+      }
+      if (form.variants.some((variant) => !Number.isFinite(Number(variant.price)) || Number(variant.price) <= 0)) {
+        setFormError("Cada modelo debe tener un precio mayor a 0.");
+        return;
+      }
     }
     if (!editing && !selectedSkuCategory) {
       setFormError("Configura el prefijo de esta categoría antes de guardar.");
@@ -976,7 +989,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                 <span className="mt-1 block text-xs font-normal text-north-muted">Nueva categoría: nombre y prefijo de tres letras.</span>
                 {categoryError && <span className="mt-1 block text-xs font-normal text-red-700" role="alert">{categoryError}</span>}
               </label>
-              {formMode === "product" && <label className="text-sm font-medium">Precio<input required min="0" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>}
+              {formMode === "product" && <label className="text-sm font-medium">Precio<input required min="0.01" step="0.01" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>}
               {formMode === "product" && <>
               <label className="text-sm font-medium">Stock<input min="0" type="number" value={form.stock} onChange={(e) => setForm({ ...form, stock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
               <label className="text-sm font-medium">Stock mínimo<input min="0" type="number" value={form.minStock} onChange={(e) => setForm({ ...form, minStock: e.target.value })} className="mt-1 h-10 w-full border border-north-border px-3 font-normal" /></label>
@@ -1057,7 +1070,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                           <input aria-label="Existencia de esta variante" type="number" min="0" placeholder="0" value={variant.stock} onChange={(e) => update({ stock: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
                         <label className="text-xs font-semibold text-north-steel">Precio
-                          <input aria-label="Precio de esta variante" type="number" min="0" step="0.01" placeholder="0.00" value={variant.price} onChange={(e) => update({ price: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
+                          <input aria-label="Precio de esta variante" type="number" min="0.01" step="0.01" placeholder="0.00" value={variant.price} onChange={(e) => update({ price: Number(e.target.value) || 0 })} className="mt-1 h-9 w-full border border-north-border bg-white px-2 text-sm font-normal" />
                         </label>
                         <div className="text-xs font-semibold text-north-steel">
                           <span>¿Se factura?</span>
