@@ -63,9 +63,9 @@ import {
 } from "@/lib/catalog/api";
 import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/auth";
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
+import { MAX_INVENTORY_UNITS } from "@/lib/pos/validation";
 
 type PosStore = PosPersistedState & {
-  currentSale: CurrentSale;
   lastCompletedSale: CompletedSale | null;
   checkoutOpen: boolean;
   successOpen: boolean;
@@ -76,7 +76,6 @@ function initialStore(): PosStore {
   const base = getDefaultState();
   return {
     ...base,
-    currentSale: { items: [], discount: 0, discountType: "fixed" },
     lastCompletedSale: null,
     checkoutOpen: false,
     successOpen: false,
@@ -107,7 +106,7 @@ function subscribe(listener: () => void) {
     store = {
       ...store,
       ...loaded,
-      currentSale: store.currentSale,
+      currentSale: loaded.currentSale ?? store.currentSale,
       lastCompletedSale: null,
       checkoutOpen: false,
       successOpen: false,
@@ -133,6 +132,7 @@ function persist(partial: Partial<PosStore>) {
     layawayFolioCounter,
     quoteFolioCounter,
     workshopFolioCounter,
+    currentSale,
   } = store;
   savePosState({
     products,
@@ -147,6 +147,7 @@ function persist(partial: Partial<PosStore>) {
     layawayFolioCounter,
     quoteFolioCounter,
     workshopFolioCounter,
+    currentSale,
   });
   emit();
 }
@@ -220,7 +221,7 @@ type PosContextValue = {
   removeFromSale: (lineId: string) => void;
   setLineQuantity: (lineId: string, quantity: number) => boolean;
   setLineDiscount: (lineId: string, discount?: LineDiscount) => void;
-  setDiscount: (discount: number, type?: "percent" | "fixed") => void;
+  setDiscount: (discount: number, type?: "percent" | "fixed") => boolean;
   openCheckout: () => void;
   closeCheckout: () => void;
   completeSale: (
@@ -613,13 +614,20 @@ export function PosProvider({ children }: { children: ReactNode }) {
   );
 
   const setDiscount = useCallback((discount: number, type: "percent" | "fixed" = "fixed") => {
+    if (!Number.isFinite(discount) || discount < 0) return false;
+    if (type === "percent" && discount > 100) return false;
+    if (type === "fixed") {
+      const saleSubtotal = calcSaleSubtotal(store.currentSale.items);
+      if (discount > saleSubtotal) return false;
+    }
     persist({
       currentSale: {
         ...store.currentSale,
-        discount: Math.max(0, discount),
+        discount,
         discountType: type,
       },
     });
+    return true;
   }, []);
 
   const openCheckout = useCallback(() => {
@@ -844,12 +852,19 @@ export function PosProvider({ children }: { children: ReactNode }) {
       const product = store.products.find((p) => p.id === input.productId);
       if (!product) return;
 
-      const delta =
+      const quantity = Math.floor(Math.abs(input.quantity));
+      if (!Number.isFinite(quantity) || quantity <= 0 || quantity > MAX_INVENTORY_UNITS) return;
+
+      const removesStock =
         input.type === "salida" ||
         input.type === "dano" ||
-        input.type === "perdida"
-          ? -Math.abs(input.quantity)
-          : Math.abs(input.quantity);
+        input.type === "perdida";
+      const delta = removesStock ? -quantity : quantity;
+
+      const available = getAvailableStock(product, input.variantId);
+      if (removesStock && quantity > available) return;
+      // Stock is floored at 0 in updateProductStock; also reject absurd positives.
+      if (!removesStock && available + quantity > MAX_INVENTORY_UNITS) return;
 
       const result = recordStockChange(
         store.products,

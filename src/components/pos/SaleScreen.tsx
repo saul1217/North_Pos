@@ -13,6 +13,7 @@ import {
   lineTotal,
 } from "@/lib/pos/inventory";
 import type { LineDiscount, PosProduct, ProductVariant } from "@/lib/pos/types";
+import { parseGlobalDiscount } from "@/lib/pos/validation";
 import { CheckoutModal } from "@/components/pos/CheckoutModal";
 import { SaleSuccessModal } from "@/components/pos/SaleSuccessModal";
 import { TicketModal } from "@/components/pos/TicketModal";
@@ -157,12 +158,21 @@ export function SaleScreen() {
   const [pickProductId, setPickProductId] = useState<string | null>(null);
   const [pickVariant, setPickVariant] = useState<ProductVariant | null>(null);
   const [cartFeedback, setCartFeedback] = useState<(SaleAddResult & { tick: number }) | null>(null);
+  const [discountDraft, setDiscountDraft] = useState(
+    () => (currentSale.discount ? String(currentSale.discount) : ""),
+  );
+  const [discountError, setDiscountError] = useState("");
   const barcodeRef = useRef<HTMLInputElement>(null);
   const feedbackTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => () => {
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
   }, []);
+
+  useEffect(() => {
+    setDiscountDraft(currentSale.discount ? String(currentSale.discount) : "");
+    setDiscountError("");
+  }, [currentSale.discount, currentSale.discountType]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -234,6 +244,21 @@ export function SaleScreen() {
     setTimeout(() => setBarcodeMsg(""), 2000);
   }
 
+  function applyGlobalDiscount(
+    raw: string,
+    type: "percent" | "fixed" = currentSale.discountType ?? "fixed",
+  ) {
+    const parsed = parseGlobalDiscount(raw, type, subtotal);
+    if (!parsed.ok) {
+      setDiscountError(parsed.error);
+      return false;
+    }
+    setDiscountError("");
+    setDiscount(parsed.value, type);
+    setDiscountDraft(parsed.value ? String(parsed.value) : "");
+    return true;
+  }
+
   return (
     <>
       <div className="flex min-h-0 flex-1 flex-col lg:flex-row">
@@ -261,15 +286,21 @@ export function SaleScreen() {
           </header>
 
           <div className="min-h-0 flex-1 overflow-y-auto p-4 md:p-6">
-            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
-              {filtered.map((product) => (
-                <ProductTile
-                  key={product.id}
-                  product={product}
-                  onAdd={() => handleProductClick(product)}
-                />
-              ))}
-            </div>
+            {filtered.length === 0 ? (
+              <p className="py-16 text-center text-sm text-north-muted">
+                {query.trim() ? "Sin resultados" : "No hay productos activos."}
+              </p>
+            ) : (
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5">
+                {filtered.map((product) => (
+                  <ProductTile
+                    key={product.id}
+                    product={product}
+                    onAdd={() => handleProductClick(product)}
+                  />
+                ))}
+              </div>
+            )}
           </div>
         </div>
 
@@ -390,42 +421,55 @@ export function SaleScreen() {
                 <span className="text-north-muted">Subtotal</span>
                 <span>{formatPosPrice(subtotal)}</span>
               </div>
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-north-muted">Descuento global</span>
-                <div className="flex items-center gap-1">
-                  <select
-                    value={currentSale.discountType ?? "fixed"}
-                    onChange={(e) =>
-                      setDiscount(
-                        currentSale.discount,
-                        e.target.value as "percent" | "fixed",
-                      )
-                    }
-                    className="h-8 border border-north-border bg-white px-1 text-xs"
-                    aria-label="Tipo de descuento global"
-                  >
-                    <option value="fixed">Pesos</option>
-                    <option value="percent">Porcentaje</option>
-                  </select>
-                  <input
-                    type="number"
-                    min={0}
-                    max={currentSale.discountType === "percent" ? 100 : undefined}
-                    value={currentSale.discount || ""}
-                    onChange={(e) =>
-                      setDiscount(
-                        Number(e.target.value) || 0,
-                        currentSale.discountType ?? "fixed",
-                      )
-                    }
-                    placeholder="0"
-                    className="h-8 w-20 border border-north-border bg-white px-2 text-right text-sm"
-                    aria-label="Valor del descuento global"
-                  />
-                  <span className="text-xs text-north-muted">
-                    {currentSale.discountType === "percent" ? "%" : "$"}
-                  </span>
+              <div className="space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-north-muted">Descuento global</span>
+                  <div className="flex items-center gap-1">
+                    <select
+                      value={currentSale.discountType ?? "fixed"}
+                      onChange={(e) => {
+                        const type = e.target.value as "percent" | "fixed";
+                        applyGlobalDiscount(discountDraft, type);
+                      }}
+                      className="h-8 border border-north-border bg-white px-1 text-xs"
+                      aria-label="Tipo de descuento global"
+                    >
+                      <option value="fixed">Pesos</option>
+                      <option value="percent">Porcentaje</option>
+                    </select>
+                    <input
+                      type="number"
+                      min={0}
+                      max={currentSale.discountType === "percent" ? 100 : undefined}
+                      value={discountDraft}
+                      onChange={(e) => {
+                        setDiscountDraft(e.target.value);
+                        if (discountError) setDiscountError("");
+                      }}
+                      onBlur={() => applyGlobalDiscount(discountDraft)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          applyGlobalDiscount(discountDraft);
+                        }
+                      }}
+                      placeholder="0"
+                      className={`h-8 w-20 border bg-white px-2 text-right text-sm ${
+                        discountError ? "border-red-500" : "border-north-border"
+                      }`}
+                      aria-invalid={Boolean(discountError)}
+                      aria-label="Valor del descuento global"
+                    />
+                    <span className="text-xs text-north-muted">
+                      {currentSale.discountType === "percent" ? "%" : "$"}
+                    </span>
+                  </div>
                 </div>
+                {discountError && (
+                  <p className="text-right text-xs text-red-700" role="alert">
+                    {discountError}
+                  </p>
+                )}
               </div>
               <div className="flex justify-between border-t border-north-border pt-2 font-display text-xl font-bold">
                 <span>Total</span>

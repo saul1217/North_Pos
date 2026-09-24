@@ -11,6 +11,10 @@ import {
 } from "@/lib/pos/inventory";
 import type { InventoryAdjustmentType, PosProduct } from "@/lib/pos/types";
 import { getAuthSession } from "@/lib/auth";
+import {
+  MAX_INVENTORY_UNITS,
+  parsePositiveInventoryQty,
+} from "@/lib/pos/validation";
 
 const adjTypes: { value: InventoryAdjustmentType; label: string }[] = [
   { value: "entrada", label: "Entrada" },
@@ -58,15 +62,23 @@ export default function PosInventarioPage() {
 
   function submitAdjust() {
     if (!selected) return;
-    const quantity = Number(adjQty);
-    const removesStock = adjType === "salida" || adjType === "dano" || adjType === "perdida";
-    const available = getAvailableStock(selected, adjVariantId || undefined);
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setAdjError("Captura una cantidad mayor que cero.");
+    const parsed = parsePositiveInventoryQty(adjQty);
+    if (!parsed.ok) {
+      setAdjError(parsed.error);
       return;
     }
+    const quantity = parsed.quantity;
+    const removesStock = adjType === "salida" || adjType === "dano" || adjType === "perdida";
+    const available = getAvailableStock(selected, adjVariantId || undefined);
     if (removesStock && quantity > available) {
       setAdjError(`No puedes retirar ${quantity}; solo hay ${available} disponibles.`);
+      return;
+    }
+    // Cap resulting stock so entrada/corrección cannot push inventory above MAX_INVENTORY_UNITS.
+    if (!removesStock && available + quantity > MAX_INVENTORY_UNITS) {
+      setAdjError(
+        `El stock resultante no puede superar ${MAX_INVENTORY_UNITS.toLocaleString("es-MX")}.`,
+      );
       return;
     }
     adjustInventory({
@@ -212,6 +224,13 @@ export default function PosInventarioPage() {
                     </tr>
                   );
                 })}
+                {filtered.length === 0 && (
+                  <tr>
+                    <td colSpan={6} className="px-4 py-10 text-center text-sm text-north-muted">
+                      {query.trim() ? "Sin resultados" : "No hay productos en inventario."}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           ) : (
@@ -256,6 +275,15 @@ export default function PosInventarioPage() {
                     <td className="max-w-xs px-4 py-3 text-xs text-north-muted">{m.reason || "—"}</td>
                   </tr>
                 ))}
+                {visibleMovements.length === 0 && (
+                  <tr>
+                    <td colSpan={8} className="px-4 py-10 text-center text-sm text-north-muted">
+                      {query.trim() || movementFilter !== "todos"
+                        ? "Sin resultados"
+                        : "Sin movimientos registrados."}
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           )}
@@ -321,7 +349,11 @@ export default function PosInventarioPage() {
 
             {canAdjust && <button
               type="button"
-              onClick={() => setAdjOpen(true)}
+              onClick={() => {
+                setAdjError("");
+                setAdjQty("");
+                setAdjOpen(true);
+              }}
               className="mt-4 h-10 w-full bg-north-primary text-sm text-white"
             >
               Ajuste de inventario
@@ -369,8 +401,12 @@ export default function PosInventarioPage() {
             <input
               type="number"
               min={1}
+              max={MAX_INVENTORY_UNITS}
               value={adjQty}
-              onChange={(e) => setAdjQty(e.target.value)}
+              onChange={(e) => {
+                setAdjQty(e.target.value);
+                if (adjError) setAdjError("");
+              }}
               placeholder="Cantidad"
               className="mt-3 h-10 w-full border border-north-border px-2 text-sm"
             />
