@@ -1,11 +1,11 @@
-const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
+const { app, BrowserWindow, dialog, ipcMain, nativeImage, safeStorage } = require("electron");
 const { autoUpdater } = require("electron-updater");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
 const db = require("./db.cjs");
-const { buildEscPos } = require("./escpos.cjs");
+const { buildEscPos, buildLogoRaster } = require("./escpos.cjs");
 
 function authPath() {
   return path.join(app.getPath("userData"), "auth.bin");
@@ -180,6 +180,40 @@ function sendRawToPrinter(printerName, buffer) {
   }));
 }
 
+
+function resolveTicketLogoPath() {
+  const candidates = [
+    path.join(process.resourcesPath || "", "brand", "logo.png"),
+    path.join(__dirname, "..", "dist", "public", "brand", "logo.png"),
+    path.join(__dirname, "..", "public", "public", "brand", "logo.png"),
+  ];
+  for (const candidate of candidates) {
+    try {
+      if (candidate && fs.existsSync(candidate)) return candidate;
+    } catch {
+      /* ignore missing path */
+    }
+  }
+  return null;
+}
+
+function loadTicketLogoRaster() {
+  try {
+    const logoPath = resolveTicketLogoPath();
+    if (!logoPath) return null;
+    const image = nativeImage.createFromPath(logoPath);
+    if (image.isEmpty()) return null;
+    const resized = image.resize({ width: 184, quality: "best" });
+    const size = resized.getSize();
+    const bitmap = resized.toBitmap();
+    const raster = buildLogoRaster(bitmap, size.width, size.height);
+    return raster && raster.length > 0 ? raster : null;
+  } catch (err) {
+    console.warn("[printEscPosTicket] logo raster failed:", err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
 async function printEscPosTicket(lines) {
   let deviceName = cachedReceiptPrinter;
   if (!deviceName) {
@@ -194,7 +228,8 @@ async function printEscPosTicket(lines) {
       error: "No se encontró la impresora térmica EC-PM-58110",
     };
   }
-  const payload = buildEscPos(lines);
+  const logoRaster = loadTicketLogoRaster();
+  const payload = buildEscPos(lines, logoRaster ? { logoRaster } : undefined);
   if (!payload.length) {
     return { ok: false, deviceName, error: "ticket-vacio" };
   }

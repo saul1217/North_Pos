@@ -617,6 +617,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                 <th className="px-4 py-3">Precio</th>
                 <th className="px-4 py-3">Stock</th>
                 <th className="px-4 py-3">Estado</th>
+                <th className="px-4 py-3">Modelo</th>
                 <th className="px-4 py-3 text-right">Acciones</th>
               </tr>
             </thead>
@@ -680,6 +681,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                           {product.status === "activo" ? "Activo" : "Inactivo"}
                         </span>
                       </td>
+                      <td className="px-4 py-3 text-sm">{product.model?.trim() || ""}</td>
                       <td className="px-4 py-3">
                         <div className="flex justify-end gap-1">
                           {canManageProducts && <button type="button" onClick={() => void toggleStatus(product)} disabled={statusSaving === product.id} className="inline-flex h-9 items-center gap-1 px-2 text-xs font-semibold text-north-primary hover:bg-north-background disabled:opacity-50" aria-label={`${product.status === "activo" ? "Desactivar" : "Activar"} ${product.name}`}>
@@ -710,7 +712,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                     </tr>
                     {isOpen && (
                       <tr key={`${product.id}-detail`}>
-                          <td colSpan={8} className="bg-north-background px-6 py-4">
+                          <td colSpan={9} className="bg-north-background px-6 py-4">
                           {product.variants.length > 0 && (
                             <div className="mb-4">
                               <p className="mb-2 text-xs font-semibold uppercase text-north-steel">
