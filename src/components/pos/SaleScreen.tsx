@@ -438,13 +438,25 @@ export function SaleScreen() {
                       <option value="percent">Porcentaje</option>
                     </select>
                     <input
-                      type="number"
-                      min={0}
-                      max={currentSale.discountType === "percent" ? 100 : undefined}
+                      type="text"
+                      inputMode="decimal"
+                      autoComplete="off"
                       value={discountDraft}
                       onChange={(e) => {
-                        setDiscountDraft(e.target.value);
-                        if (discountError) setDiscountError("");
+                        const next = e.target.value;
+                        setDiscountDraft(next);
+                        // Live-check non-numeric so "abc" shows feedback even before blur
+                        // (type=number would have blocked those keystrokes entirely).
+                        if (next.trim() === "") {
+                          setDiscountError("");
+                          return;
+                        }
+                        const parsed = parseGlobalDiscount(
+                          next,
+                          currentSale.discountType ?? "fixed",
+                          subtotal,
+                        );
+                        setDiscountError(parsed.ok ? "" : parsed.error);
                       }}
                       onBlur={() => applyGlobalDiscount(discountDraft)}
                       onKeyDown={(e) => {
