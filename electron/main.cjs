@@ -1,5 +1,6 @@
 const { app, BrowserWindow, dialog, ipcMain, safeStorage } = require("electron");
 const { autoUpdater } = require("electron-updater");
+const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -8,6 +9,7 @@ const path = require("node:path");
 app.setPath("userData", path.join(app.getPath("appData"), "North Bike POS Pruebas"));
 
 const db = require("./db.cjs");
+const { buildEscPos } = require("./escpos.cjs");
 
 function authPath() {
   return path.join(app.getPath("userData"), "auth.bin");
@@ -70,6 +72,145 @@ ipcMain.handle("pos:exportBackup", async () => {
   await db.exportBackup(result.filePath);
   return { canceled: false, path: result.filePath };
 });
+const RECEIPT_PRINTER_RE = /ec-?pm|ec-?58|5850|58110|drv58|pos-?58|gp-?58|gprinter|thermal|ticket|receipt|miniprint/i;
+let cachedReceiptPrinter = null;
+let rawPrintExePromise = null;
+
+function pickReceiptPrinter(names) {
+  return names.find((name) => RECEIPT_PRINTER_RE.test(name)) ?? null;
+}
+
+function findCsc() {
+  const roots = [
+    process.env.WINDIR && path.join(process.env.WINDIR, "Microsoft.NET", "Framework64", "v4.0.30319", "csc.exe"),
+    process.env.WINDIR && path.join(process.env.WINDIR, "Microsoft.NET", "Framework", "v4.0.30319", "csc.exe"),
+  ].filter(Boolean);
+  return roots.find((candidate) => fs.existsSync(candidate)) ?? null;
+}
+
+function ensureRawPrintExe() {
+  if (rawPrintExePromise) return rawPrintExePromise;
+  rawPrintExePromise = new Promise((resolve, reject) => {
+    const exe = path.join(app.getPath("userData"), "raw-print.exe");
+    if (fs.existsSync(exe)) {
+      resolve(exe);
+      return;
+    }
+    const csc = findCsc();
+    const source = path.join(__dirname, "raw-print.cs");
+    if (!csc || !fs.existsSync(source)) {
+      reject(new Error("No se pudo preparar el helper de impresión RAW"));
+      return;
+    }
+    const compiled = spawnSync(csc, ["/nologo", "/optimize+", `/out:${exe}`, source], {
+      windowsHide: true,
+      encoding: "utf8",
+    });
+    if (compiled.status !== 0 || !fs.existsSync(exe)) {
+      reject(new Error((compiled.stderr || compiled.stdout || "csc failed").trim()));
+      return;
+    }
+    resolve(exe);
+  }).catch((err) => {
+    rawPrintExePromise = null;
+    throw err;
+  });
+  return rawPrintExePromise;
+}
+
+async function listPrinterNames() {
+  const win = (typeof mainWindow !== "undefined" && mainWindow && !mainWindow.isDestroyed())
+    ? mainWindow
+    : BrowserWindow.getFocusedWindow();
+  if (win && !win.isDestroyed()) {
+    const printers = await win.webContents.getPrintersAsync();
+    return printers.map((printer) => printer.name);
+  }
+  return [];
+}
+
+function sendRawToPrinter(printerName, buffer) {
+  const tmp = path.join(app.getPath("temp"), `northbike-ticket-${Date.now()}.bin`);
+  fs.writeFileSync(tmp, buffer);
+  return ensureRawPrintExe().then((exe) => new Promise((resolve, reject) => {
+    const child = spawn(exe, [printerName, tmp], { windowsHide: true });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => { stdout += String(chunk); });
+    child.stderr.on("data", (chunk) => { stderr += String(chunk); });
+    child.on("error", (err) => {
+      try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+      reject(err);
+    });
+    child.on("close", (code) => {
+      try { fs.unlinkSync(tmp); } catch { /* already gone */ }
+      if (code === 0) resolve({ ok: true, stdout });
+      else reject(new Error((stderr || stdout || `raw-print exit ${code}`).trim()));
+    });
+  }));
+}
+
+async function printEscPosTicket(lines) {
+  let deviceName = cachedReceiptPrinter;
+  if (!deviceName) {
+    const names = await listPrinterNames();
+    deviceName = pickReceiptPrinter(names);
+    if (deviceName) cachedReceiptPrinter = deviceName;
+  }
+  if (!deviceName) {
+    return {
+      ok: false,
+      deviceName: null,
+      error: "No se encontró la impresora térmica EC-PM-58110",
+    };
+  }
+  const payload = buildEscPos(lines);
+  if (!payload.length) {
+    return { ok: false, deviceName, error: "ticket-vacio" };
+  }
+  try {
+    await sendRawToPrinter(deviceName, payload);
+    return { ok: true, deviceName };
+  } catch (err) {
+    cachedReceiptPrinter = null;
+    throw err;
+  }
+}
+
+function linesFromPayload(payload) {
+  if (payload && Array.isArray(payload.lines) && payload.lines.length > 0) {
+    return payload.lines;
+  }
+  const html = typeof payload === "string" ? payload : payload?.html;
+  if (typeof html !== "string" || !html.trim()) return null;
+  return html
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|tr|h[1-6]|li|table|thead|tbody|section)>/gi, "\n")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .split(/\r?\n/)
+    .map((line) => line.replace(/\s+/g, " ").trim())
+    .filter(Boolean)
+    .map((text) => ({ text }));
+}
+
+ipcMain.handle("pos:printTicket", async (_event, payload) => {
+  const lines = linesFromPayload(payload);
+  if (!lines || lines.length === 0) {
+    return { ok: false, deviceName: null, error: "El ticket no tiene contenido para imprimir" };
+  }
+  try {
+    return await printEscPosTicket(lines);
+  } catch (err) {
+    return { ok: false, deviceName: null, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
 ipcMain.handle("pos:importBackup", async () => {
   const result = await dialog.showOpenDialog({
     title: "Restaurar respaldo del POS",

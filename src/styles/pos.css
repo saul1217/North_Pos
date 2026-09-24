@@ -13,30 +13,37 @@ button:disabled {
   cursor: not-allowed;
 }
 
+@page {
+  size: 58mm auto;
+  margin: 0;
+}
+
 @media print {
+  html,
+  body,
+  #root {
+    background: white !important;
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .pos-shell {
+    height: auto !important;
+    overflow: visible !important;
+  }
+
+  .pos-no-print {
+    display: none !important;
+  }
+
+  /* Tickets print from an isolated document. Barcodes still use window.print(). */
   body * {
     visibility: hidden;
   }
 
-  .pos-ticket-print,
-  .pos-ticket-print *,
   .pos-barcode-print,
   .pos-barcode-print * {
-    visibility: visible;
-  }
-
-  .pos-ticket-print {
-    position: absolute;
-    left: 0;
-    top: 0;
-    width: 80mm;
-    padding: 8mm;
-    background: white !important;
-    color: black !important;
-  }
-
-  .pos-no-print {
-    visibility: hidden !important;
+    visibility: visible !important;
   }
 
   .pos-barcode-print {

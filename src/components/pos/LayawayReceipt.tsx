@@ -17,7 +17,7 @@ export function LayawayReceipt({
   const date = new Date(layaway.payments.at(-1)?.date ?? layaway.createdAt);
 
   return (
-    <div className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
+    <div data-pos-ticket="print" className="pos-ticket-print mx-auto max-w-xs bg-white p-6 text-black">
       <div className="text-center">
         <Image
           src={logoSrc}
