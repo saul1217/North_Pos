@@ -1,7 +1,7 @@
 {
   "name": "northbike-pos",
   "private": true,
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "Punto de venta de escritorio para North Bike",
   "author": "North Bike",
   "type": "module",
@@ -26,7 +26,9 @@
       "electron/**/*"
     ],
     "asarUnpack": [
-      "**/node_modules/better-sqlite3/**"
+      "**/node_modules/better-sqlite3/**",
+      "electron/raw-print.cs",
+      "electron/raw-print.ps1"
     ],
     "directories": {
       "output": "release"
@@ -49,6 +51,12 @@
         "owner": "saul1217",
         "repo": "North_Pos",
         "releaseType": "release"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "electron/raw-print.cs",
+        "to": "raw-print.cs"
       }
     ]
   },
