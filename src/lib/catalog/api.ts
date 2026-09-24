@@ -86,6 +86,10 @@ export function syncProducts(input: ProductSyncState, accessToken?: string | nul
     };
     return {
       ...cleanProduct,
+      // El backend no acepta existencias negativas. Normalizamos datos
+      // locales antiguos o ventas pendientes antes de enviarlos.
+      stock: Math.max(0, Number(cleanProduct.stock) || 0),
+      minStock: Math.max(0, Number(cleanProduct.minStock) || 0),
       variants: variants.map((variant) => {
         const {
           createdAt: _variantCreatedAt,
@@ -97,7 +101,11 @@ export function syncProducts(input: ProductSyncState, accessToken?: string | nul
           updatedAt?: string;
           productId?: string;
         };
-        return cleanVariant;
+        return {
+          ...cleanVariant,
+          stock: Math.max(0, Number(cleanVariant.stock) || 0),
+          minStock: Math.max(0, Number(cleanVariant.minStock) || 0),
+        };
       }),
       serialUnits: serialUnits.map((unit) => {
         const { createdAt: _unitCreatedAt, updatedAt: _unitUpdatedAt, ...cleanUnit } = unit as typeof unit & { createdAt?: string; updatedAt?: string };

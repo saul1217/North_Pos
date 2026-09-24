@@ -3,6 +3,7 @@
 import { X } from "lucide-react";
 import { usePos } from "@/context/PosContext";
 import { TicketReceipt } from "@/components/pos/TicketReceipt";
+import { printSaleTicket } from "@/lib/pos/printTicket";
 
 export function TicketModal() {
   const { ticketOpen, closeTicket, lastCompletedSale } = usePos();
@@ -21,7 +22,14 @@ export function TicketModal() {
           <X className="h-4 w-4" />
         </button>
         <TicketReceipt sale={lastCompletedSale} />
-        <div className="pos-no-print mt-4">
+        <div className="pos-no-print mt-4 flex gap-2">
+          <button
+            type="button"
+            onClick={() => void printSaleTicket(lastCompletedSale)}
+            className="h-10 flex-1 bg-north-primary text-sm font-semibold text-white"
+          >
+            Imprimir
+          </button>
           <button
             type="button"
             onClick={closeTicket}

@@ -11,6 +11,26 @@ export type AuthSession = { access_token: string; user: AuthUser };
 const AUTH_KEY = "northbike-pos-auth-v1";
 let backgroundAdminToken: string | null = null;
 
+function persistLocalSession(session: AuthSession) {
+  localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+}
+
+function trySecureSave(sessionJson: string) {
+  if (!window.pos?.saveAuthSession) return;
+  void window.pos
+    .saveAuthSession(sessionJson)
+    .then(() => {
+      // Prefer the secure store once it actually persisted.
+      localStorage.removeItem(AUTH_KEY);
+    })
+    .catch((err) => {
+      console.warn(
+        "[auth] secure store unavailable, keeping localStorage session",
+        err,
+      );
+    });
+}
+
 export function getAuthSession(): AuthSession | null {
   if (typeof window === "undefined") return null;
   try {
@@ -19,12 +39,9 @@ export function getAuthSession(): AuthSession | null {
     const raw = localStorage.getItem(AUTH_KEY);
     if (!raw) return null;
     const session = JSON.parse(raw) as AuthSession;
-    // Migrate the existing browser storage entry once the Electron secure
-    // store is available, then remove the plaintext copy.
-    if (window.pos?.saveAuthSession) {
-      void window.pos.saveAuthSession(JSON.stringify(session));
-      localStorage.removeItem(AUTH_KEY);
-    }
+    // Migrate plaintext → secure store when available; keep localStorage
+    // until the IPC save resolves successfully.
+    trySecureSave(raw);
     return session;
   } catch {
     return null;
@@ -33,11 +50,12 @@ export function getAuthSession(): AuthSession | null {
 
 export function saveAuthSession(session: AuthSession) {
   if (session.user.role === "admin") backgroundAdminToken = session.access_token;
-  if (typeof window !== "undefined" && window.pos?.saveAuthSession) {
-    void window.pos.saveAuthSession(JSON.stringify(session));
-    return;
-  }
-  localStorage.setItem(AUTH_KEY, JSON.stringify(session));
+  if (typeof window === "undefined") return;
+  const payload = JSON.stringify(session);
+  // Always keep a readable copy so getAccessToken()/refreshCatalog work even
+  // when Electron safeStorage is unavailable (Linux QA / locked-down hosts).
+  persistLocalSession(session);
+  trySecureSave(payload);
 }
 
 // Permite que la cola del POS termine operaciones del administrador mientras
@@ -51,9 +69,10 @@ export function clearAuthSession() {
   if (typeof window !== "undefined" && window.pos?.clearAuthSession) {
     void window.pos.clearAuthSession();
   }
-  localStorage.removeItem(AUTH_KEY);
+  if (typeof window !== "undefined") localStorage.removeItem(AUTH_KEY);
+  backgroundAdminToken = null;
 }
 
 export function getAccessToken() {
-  return getAuthSession()?.access_token ?? null;
+  return getAuthSession()?.access_token ?? backgroundAdminToken;
 }

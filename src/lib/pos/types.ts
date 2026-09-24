@@ -267,4 +267,6 @@ export type PosPersistedState = {
   layawayFolioCounter: number;
   quoteFolioCounter: number;
   workshopFolioCounter: number;
+  /** Open cart; kept across module navigation and app restarts. */
+  currentSale: CurrentSale;
 };

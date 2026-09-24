@@ -7,6 +7,7 @@ import { usePos } from "@/context/PosContext";
 import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
 import type { Layaway, PosProduct, SaleLineItem } from "@/lib/pos/types";
 import { printTicket } from "@/lib/pos/printTicket";
+import { isValidPhone } from "@/lib/pos/validation";
 
 export default function PosApartadosPage() {
   const { layaways, products, createLayaway, addLayawayPayment, cancelLayaway } =
@@ -18,6 +19,7 @@ export default function PosApartadosPage() {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [deposit, setDeposit] = useState("");
+  const [formError, setFormError] = useState("");
   const [selectedProducts, setSelectedProducts] = useState<
     { product: PosProduct; qty: number }[]
   >([]);
@@ -61,6 +63,20 @@ export default function PosApartadosPage() {
   }
 
   function submitLayaway() {
+    setFormError("");
+    const name = customerName.trim();
+    if (!name) {
+      setFormError("El nombre del cliente es obligatorio.");
+      return;
+    }
+    if (!isValidPhone(customerPhone)) {
+      setFormError("Captura un teléfono válido (solo dígitos, 10 números).");
+      return;
+    }
+    if (selectedProducts.length === 0) {
+      setFormError("Agrega al menos un producto.");
+      return;
+    }
     const items: SaleLineItem[] = selectedProducts.map(({ product, qty }) => ({
       lineId: makeLineId(product.id),
       productId: product.id,
@@ -69,14 +85,27 @@ export default function PosApartadosPage() {
       price: product.price,
       quantity: qty,
     }));
-    const dep = Number(deposit) || 0;
-    if (!customerName || items.length === 0 || dep <= 0) return;
+    const total = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+    const dep = Number(deposit);
+    if (deposit.trim() === "" || !Number.isFinite(dep)) {
+      setFormError("Captura un anticipo válido.");
+      return;
+    }
+    if (dep < 0) {
+      setFormError("El anticipo no puede ser negativo.");
+      return;
+    }
+    if (dep > total) {
+      setFormError("El anticipo no puede ser mayor al total.");
+      return;
+    }
     createLayaway({
-      customer: { name: customerName, phone: customerPhone },
+      customer: { name, phone: customerPhone.trim() },
       items,
       deposit: dep,
     });
     setShowNew(false);
+    setFormError("");
     setCustomerName("");
     setCustomerPhone("");
     setDeposit("");
@@ -97,7 +126,10 @@ export default function PosApartadosPage() {
           </div>
           <button
             type="button"
-            onClick={() => setShowNew(true)}
+            onClick={() => {
+              setFormError("");
+              setShowNew(true);
+            }}
             className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white"
           >
             <Plus className="h-4 w-4" />
@@ -237,6 +269,11 @@ export default function PosApartadosPage() {
                 </p>
               )}
             </div>
+            {formError && (
+              <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
+                {formError}
+              </p>
+            )}
             <button
               type="button"
               onClick={submitLayaway}

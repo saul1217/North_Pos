@@ -13,6 +13,7 @@ import type {
 import { WorkshopReceipt } from "@/components/pos/WorkshopReceipt";
 import { getAuthSession } from "@/lib/auth";
 import { printTicket } from "@/lib/pos/printTicket";
+import { isValidPhone } from "@/lib/pos/validation";
 
 const statusOptions: WorkshopStatus[] = [
   "diagnosticada",
@@ -120,15 +121,19 @@ export default function PosTallerPage() {
       );
       return;
     }
-    if (!customerName || !customerPhone || !bikeBrand || !bikeModel) {
+    if (!customerName.trim() || !bikeBrand.trim() || !bikeModel.trim()) {
       setFormError("Nombre, teléfono, marca y modelo son requeridos.");
+      return;
+    }
+    if (!isValidPhone(customerPhone)) {
+      setFormError("Captura un teléfono válido (solo dígitos, 10 números).");
       return;
     }
 
     const order = createWorkshopOrder({
       customer: {
-        name: customerName,
-        phone: customerPhone,
+        name: customerName.trim(),
+        phone: customerPhone.trim(),
         email: customerEmail || undefined,
       },
       bike: {
@@ -168,21 +173,41 @@ export default function PosTallerPage() {
 
   function saveDiagnosis() {
     if (!selected) return;
+    if (!diagnosis.trim()) {
+      setSaveMessage("");
+      setFormError("El diagnóstico es obligatorio.");
+      return;
+    }
+    setFormError("");
+    const trimmedDiagnosis = diagnosis.trim();
     updateWorkshopOrder(selected.id, {
-      diagnosis,
+      diagnosis: trimmedDiagnosis,
       technicalNotes,
       clientProblem: selected.clientProblem,
     });
-    setSelected({ ...selected, diagnosis, technicalNotes });
+    setSelected({ ...selected, diagnosis: trimmedDiagnosis, technicalNotes });
+    setDiagnosis(trimmedDiagnosis);
     setSaveMessage("Diagnóstico guardado correctamente.");
   }
 
   async function saveBudget() {
     if (!selected) return;
     setSavingBudget(true);
+    setSaveMessage("");
     setFormError("");
-    if (budgetItems.some((item) => !item.description.trim() || item.quantity <= 0 || item.price < 0)) {
-      setFormError("Cada línea necesita una descripción, cantidad y precio válidos.");
+    if (!isCashier && !diagnosis.trim()) {
+      setFormError("El diagnóstico es obligatorio.");
+      setSavingBudget(false);
+      return;
+    }
+    if (
+      budgetItems.some((item) => {
+        if (item.type === "refaccion" && !item.productId) return true;
+        if (!item.description.trim() || !(item.quantity > 0)) return true;
+        return !Number.isFinite(item.price) || item.price < 0;
+      })
+    ) {
+      setFormError("Cada línea necesita una descripción, cantidad y precio válidos (>= 0).");
       setSavingBudget(false);
       return;
     }
@@ -199,7 +224,7 @@ export default function PosTallerPage() {
           status: "pendiente",
         },
         clientProblem: selected.clientProblem,
-        diagnosis,
+        diagnosis: diagnosis.trim(),
         technicalNotes,
       });
       setSelected(updated);
@@ -271,7 +296,7 @@ export default function PosTallerPage() {
         description: "Servicio / refacción",
         type: "servicio",
         quantity: 1,
-        price: 0,
+        price: Number.NaN,
       },
     ]);
   }
@@ -402,6 +427,7 @@ export default function PosTallerPage() {
                       onClick={() => {
                         setSelected(o);
                         setSaveMessage("");
+                        setFormError("");
                         setDiagnosis(o.diagnosis ?? "");
                         setTechnicalNotes(o.technicalNotes ?? "");
                         setBudgetItems(hydrateBudgetItems(o.budget?.items ?? []));
@@ -547,6 +573,11 @@ export default function PosTallerPage() {
                   >
                     Guardar diagnóstico
                   </button>
+                  {formError && (
+                    <p className="border border-red-200 bg-red-50 px-2 py-2 text-xs text-red-700" role="alert">
+                      {formError}
+                    </p>
+                  )}
                 </div>}
 
                 <div className="mt-4">
@@ -586,7 +617,10 @@ export default function PosTallerPage() {
                           <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_90px_110px_32px]">
                             <input value={item.description} placeholder="Describe el trabajo manual" disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, description: e.target.value } : b))} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm" />
                             <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de trabajo ${idx + 1}`} />
-                            <input type="number" min={0} value={item.price || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: Number(e.target.value) || 0 } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Precio del trabajo ${idx + 1}`} placeholder="Precio" />
+                            <input type="number" min={0} step="0.01" value={Number.isFinite(item.price) ? item.price : ""} disabled={isBudgetLocked} onChange={(e) => {
+                              const raw = e.target.value;
+                              setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: raw === "" ? Number.NaN : Number(raw) } : b));
+                            }} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Precio del trabajo ${idx + 1}`} placeholder="Precio" />
                             {!isBudgetLocked && <button type="button" onClick={() => setBudgetItems((prev) => prev.filter((_, i) => i !== idx))} className="h-9 text-lg leading-none text-red-700" aria-label={`Eliminar trabajo ${idx + 1}`}>×</button>}
                           </div>
                         )}

@@ -1,5 +1,6 @@
 import type {
   CompletedSale,
+  CurrentSale,
   InventoryMovement,
   Layaway,
   PosPersistedState,
@@ -13,6 +14,8 @@ export const POS_STATE_KEY = "northbike-pos-state-v2";
 
 // Estado inicial de una instalación limpia: sin datos demo. El catálogo real
 // se gestiona aparte (backend / alta de productos).
+const emptySale = (): CurrentSale => ({ items: [], discount: 0, discountType: "fixed" });
+
 export function getDefaultState(): PosPersistedState {
   return {
     products: [],
@@ -27,6 +30,7 @@ export function getDefaultState(): PosPersistedState {
     layawayFolioCounter: 0,
     quoteFolioCounter: 0,
     workshopFolioCounter: 0,
+    currentSale: emptySale(),
   };
 }
 
@@ -82,12 +86,23 @@ export function loadPosState(): PosPersistedState {
     const raw = readRawState();
     if (!raw) return getDefaultState();
     const parsed = JSON.parse(raw) as PosPersistedState;
+    const defaults = getDefaultState();
+    const sale = parsed.currentSale;
+    const currentSale: CurrentSale =
+      sale && Array.isArray(sale.items)
+        ? {
+            items: sale.items,
+            discount: Number.isFinite(sale.discount) ? Math.max(0, sale.discount) : 0,
+            discountType: sale.discountType === "percent" ? "percent" : "fixed",
+          }
+        : defaults.currentSale;
     return {
-      ...getDefaultState(),
+      ...defaults,
       ...parsed,
       products: (parsed.products ?? []).map(normalizeProductIdentifiers),
       deletedProductIds: parsed.deletedProductIds ?? [],
       workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
+      currentSale,
     };
   } catch {
     return getDefaultState();
