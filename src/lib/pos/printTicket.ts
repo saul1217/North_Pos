@@ -230,6 +230,7 @@ function saleToTicketLines(sale: CompletedSale): TicketPrintLine[] {
 
   for (const item of sale.items) {
     lines.push({ text: item.name, bold: true });
+    if (item.model) lines.push({ text: `Modelo: ${item.model}` });
     if (item.variantLabel) lines.push({ text: item.variantLabel });
     if (item.serialNumber) lines.push({ text: item.serialNumber });
     if (item.lineDiscount && item.lineDiscount.value > 0) {

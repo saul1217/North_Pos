@@ -1,7 +1,7 @@
 {
   "name": "northbike-pos",
   "private": true,
-  "version": "0.1.16-beta.1",
+  "version": "0.1.17-beta.1",
   "description": "Punto de venta de escritorio para North Bike",
   "author": "North Bike",
   "type": "module",
@@ -57,6 +57,10 @@
       {
         "from": "electron/raw-print.cs",
         "to": "raw-print.cs"
+      },
+      {
+        "from": "public/public/brand/logo.png",
+        "to": "brand/logo.png"
       }
     ]
   },
