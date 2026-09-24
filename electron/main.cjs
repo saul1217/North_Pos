@@ -102,6 +102,19 @@ function findCsc() {
   return roots.find((candidate) => fs.existsSync(candidate)) ?? null;
 }
 
+function resolveRawPrintCsSource() {
+  const candidates = [
+    path.join(process.resourcesPath, "raw-print.cs"),
+    path.join(process.resourcesPath, "app.asar.unpacked", "electron", "raw-print.cs"),
+    path.join(__dirname.replace(/app\.asar(?!\.unpacked)/, "app.asar.unpacked"), "raw-print.cs"),
+    path.join(__dirname, "raw-print.cs"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return { missing: true, candidates };
+}
+
 function ensureRawPrintExe() {
   if (rawPrintExePromise) return rawPrintExePromise;
   rawPrintExePromise = new Promise((resolve, reject) => {
@@ -111,9 +124,16 @@ function ensureRawPrintExe() {
       return;
     }
     const csc = findCsc();
-    const source = path.join(__dirname, "raw-print.cs");
-    if (!csc || !fs.existsSync(source)) {
-      reject(new Error("No se pudo preparar el helper de impresión RAW"));
+    const sourceOrMissing = resolveRawPrintCsSource();
+    if (sourceOrMissing && sourceOrMissing.missing) {
+      reject(new Error(
+        "No se encontró raw-print.cs en disco. Candidatos: " + sourceOrMissing.candidates.join(" | ")
+      ));
+      return;
+    }
+    const source = sourceOrMissing;
+    if (!csc) {
+      reject(new Error("No se pudo preparar el helper de impresión RAW: csc.exe no encontrado"));
       return;
     }
     const compiled = spawnSync(csc, ["/nologo", "/optimize+", `/out:${exe}`, source], {
