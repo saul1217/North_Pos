@@ -56,9 +56,13 @@ export function SyncBar() {
     if (canSyncSales) {
       const res = await syncSales(salesRef.current);
       setPending(res.pending);
-      if (!res.ok) {
+      // Surface server reject reasons even when some sales applied (ok:true + error).
+      if (res.error) {
+        setError(res.error);
         failed = true;
-        setError(res.error ?? "error");
+      } else if (!res.ok) {
+        failed = true;
+        setError("error");
       } else {
         setError(null);
       }
