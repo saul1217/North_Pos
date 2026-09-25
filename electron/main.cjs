@@ -311,6 +311,7 @@ function setupAutoUpdater() {
   // se instala al reiniciar sin mostrar el asistente de NSIS.
   autoUpdater.autoDownload = true;
   autoUpdater.autoInstallOnAppQuit = true;
+  // Las instalaciones del cliente solo reciben versiones estables.
   autoUpdater.allowPrerelease = false;
 
   autoUpdater.on("checking-for-update", () => sendUpdateStatus("checking"));

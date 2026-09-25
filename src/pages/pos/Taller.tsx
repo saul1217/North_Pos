@@ -12,6 +12,7 @@ import type {
 } from "@/lib/pos/types";
 import { WorkshopReceipt } from "@/components/pos/WorkshopReceipt";
 import { getAuthSession } from "@/lib/auth";
+import { printTicket } from "@/lib/pos/printTicket";
 import { isValidPhone } from "@/lib/pos/validation";
 
 const statusOptions: WorkshopStatus[] = [
@@ -874,13 +875,13 @@ export default function PosTallerPage() {
       </div>
 
       {printOrder && (
-        <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="w-full max-w-md">
             <WorkshopReceipt order={printOrder} />
-            <div className="mt-4 flex gap-2">
+            <div className="pos-no-print mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => void printTicket()}
                 className="h-10 flex-1 bg-north-primary text-sm text-white"
               >
                 Imprimir comprobante

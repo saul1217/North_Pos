@@ -6,6 +6,7 @@ import { LayawayReceipt } from "@/components/pos/LayawayReceipt";
 import { usePos } from "@/context/PosContext";
 import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
 import type { Layaway, PosProduct, SaleLineItem } from "@/lib/pos/types";
+import { printTicket } from "@/lib/pos/printTicket";
 import { isValidPhone } from "@/lib/pos/validation";
 
 export default function PosApartadosPage() {
@@ -402,7 +403,7 @@ export default function PosApartadosPage() {
       )}
 
       {receipt && (
-        <div className="pos-no-print fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
+        <div className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-north-dark/60 p-4 pt-12">
           <div className="relative w-full max-w-sm">
             <LayawayReceipt
               layaway={receipt.layaway}
@@ -410,10 +411,10 @@ export default function PosApartadosPage() {
               received={receipt.received}
               change={receipt.change}
             />
-            <div className="mt-4 flex gap-2">
+            <div className="pos-no-print mt-4 flex gap-2">
               <button
                 type="button"
-                onClick={() => window.print()}
+                onClick={() => void printTicket()}
                 className="inline-flex h-10 flex-1 items-center justify-center gap-2 bg-north-primary text-sm text-white"
               >
                 <Printer className="h-4 w-4" />
