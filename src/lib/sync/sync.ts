@@ -1,5 +1,6 @@
 import type { CompletedSale } from "@/lib/pos/types";
-import { addSyncedIds, getSyncedIds } from "./kv";
+import { getSyncedFingerprints, recordSynced } from "./kv";
+import { saleSyncFingerprint } from "./fingerprint";
 import { postInChunks } from "./chunks";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { sanitizeReturnsForSync } from "@/lib/pos/quantities";
@@ -13,7 +14,7 @@ const API_BASE =
 export type SyncOutcome = {
   ok: boolean;
   pushed: number; // sales newly applied on the server this round
-  pending: number; // sales still not confirmed
+  pending: number; // sales still not confirmed (new + pending status changes)
   error?: string;
 };
 
@@ -25,10 +26,37 @@ type SyncResponse = {
   failed?: SyncFailed[];
 };
 
-// Sales the backend has not confirmed yet (the outbox).
+// Sales the backend has never confirmed (the outbox of new sales).
 export function pendingSales(sales: CompletedSale[]): CompletedSale[] {
-  const synced = getSyncedIds();
+  const synced = getSyncedFingerprints();
   return sales.filter((s) => !synced.has(s.id));
+}
+
+// Already-synced sales whose status/cancel reason/returns changed since the
+// server last confirmed them (or synced before fingerprints existed).
+export function changedSales(sales: CompletedSale[]): CompletedSale[] {
+  const synced = getSyncedFingerprints();
+  return sales.filter((s) => {
+    const confirmed = synced.get(s.id);
+    return confirmed !== undefined && confirmed !== saleSyncFingerprint(s);
+  });
+}
+
+// Sales that still need a request: new ones plus pending status changes.
+export function unsyncedSalesCount(sales: CompletedSale[]): number {
+  const synced = getSyncedFingerprints();
+  let count = 0;
+  for (const s of sales) {
+    const confirmed = synced.get(s.id);
+    if (confirmed === undefined || confirmed !== saleSyncFingerprint(s)) count += 1;
+  }
+  return count;
+}
+
+// Sales that arrived from the server (GET /sales) are, by definition, what the
+// server has: record their fingerprint so they are not pushed back.
+export function markSalesFromServer(sales: CompletedSale[]): void {
+  recordSynced(sales.map((s) => ({ id: s.id, fingerprint: saleSyncFingerprint(s) })));
 }
 
 // Map a POS sale to the backend's /sales/sync shape (extra fields are ignored
@@ -101,6 +129,13 @@ async function postSalesBatch(
   return { okHttp: true, data: (raw as SyncResponse) ?? null };
 }
 
+function recordConfirmed(sent: CompletedSale[], ids: string[]) {
+  const confirmed = new Set(ids);
+  recordSynced(
+    sent.filter((s) => confirmed.has(s.id)).map((s) => ({ id: s.id, fingerprint: saleSyncFingerprint(s) })),
+  );
+}
+
 export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
   const pending = pendingSales(sales);
   if (sales.length === 0) return { ok: true, pushed: 0, pending: 0 };
@@ -110,7 +145,7 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
     let firstError: string | undefined;
     let pendingSucceeded = 0;
 
-    // One-by-one for pending so a single poison sale cannot block the outbox,
+    // One-by-one for new sales so a single poison sale cannot block the outbox,
     // even against an older backend that still rejects the whole batch.
     for (const sale of pending) {
       const result = await postSalesBatch([toPayload(sale)]);
@@ -121,7 +156,7 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       const applied = result.data?.applied ?? [];
       const skipped = result.data?.skipped ?? [];
       const failed = result.data?.failed ?? [];
-      addSyncedIds([...applied, ...skipped]);
+      recordConfirmed([sale], [...applied, ...skipped]);
       pushed += applied.length;
       if (failed.length) {
         if (!firstError) firstError = failed[0]?.reason || "Venta rechazada";
@@ -130,18 +165,18 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       }
     }
 
-    // Already-synced sales may still need cancel/return status updates.
-    const synced = getSyncedIds();
-    const updates = sales.filter((s) => synced.has(s.id));
+    // Only already-synced sales with a pending change (cancel/return) are
+    // resent, in chunks of ≤100 (backend limit); one failing chunk does not
+    // stop the others. Rejected ones keep their old fingerprint and retry.
+    const updates = changedSales(sales);
     if (updates.length > 0) {
-      // En tandas de ≤100 (límite del backend); una tanda fallida no frena las demás.
       const merged = await postInChunks(updates.map(toPayload), postSalesBatch);
-      addSyncedIds([...merged.applied, ...merged.skipped]);
+      recordConfirmed(updates, [...merged.applied, ...merged.skipped]);
       pushed += merged.applied.length;
       if (!firstError) firstError = merged.errors[0] ?? (merged.failed.length ? merged.failed[0]?.reason || "Venta rechazada" : undefined);
     }
 
-    const stillPending = pendingSales(sales).length;
+    const stillPending = unsyncedSalesCount(sales);
     // ok when nothing was pending, or at least one pending sale landed.
     const ok = pending.length === 0 || pendingSucceeded > 0;
     return {
@@ -151,7 +186,7 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       ...(firstError ? { error: firstError } : {}),
     };
   } catch (err) {
-    return { ok: false, pushed: 0, pending: pending.length, error: (err as Error).message };
+    return { ok: false, pushed: 0, pending: unsyncedSalesCount(sales), error: (err as Error).message };
   }
 }
 
