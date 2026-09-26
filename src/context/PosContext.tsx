@@ -33,6 +33,8 @@ import {
   calcSaleSubtotal,
   createMovement,
   findByBarcode,
+  requiresVariantChoice,
+  saleLinesMissingVariant,
   getAvailableStock,
   getVariant,
   lineTotal,
@@ -194,6 +196,15 @@ export type SaleAddResult = {
   name: string;
 };
 
+/**
+ * Resultado de escanear en Venta. Un producto padre con varias variantes no se
+ * agrega directo: la pantalla debe pedir la variante ("needs-variant").
+ */
+export type BarcodeAddOutcome =
+  | { status: "added"; result: SaleAddResult }
+  | { status: "needs-variant"; product: PosProduct }
+  | { status: "failed" };
+
 type PosContextValue = {
   products: PosProduct[];
   catalogLoading: boolean;
@@ -217,7 +228,7 @@ type PosContextValue = {
     variant?: ProductVariant,
     serialNumber?: string,
   ) => SaleAddResult | null;
-  addByBarcode: (code: string) => SaleAddResult | null;
+  addByBarcode: (code: string) => BarcodeAddOutcome;
   removeFromSale: (lineId: string) => void;
   setLineQuantity: (lineId: string, quantity: number) => boolean;
   setLineDiscount: (lineId: string, discount?: LineDiscount) => void;
@@ -511,6 +522,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const addToSale = useCallback(
     (product: PosProduct, variant?: ProductVariant, serialNumber?: string) => {
       if (product.status === "inactivo") return null;
+      // Un padre con variantes nunca entra al carrito sin variante: no habría a
+      // qué variante descontar existencias.
+      if (requiresVariantChoice(product) && !variant) return null;
       const variantId = variant?.id;
       const stock = getAvailableStock(product, variantId);
       if (stock <= 0) return null;
@@ -550,18 +564,27 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const addByBarcode = useCallback((code: string) => {
+  const addByBarcode = useCallback((code: string): BarcodeAddOutcome => {
     const found = findByBarcode(store.products, code);
-    if (!found) return null;
-    const { product, variant } = found;
+    if (!found) return { status: "failed" };
+    const { product } = found;
+    let variant = found.variant;
+    if (!variant && requiresVariantChoice(product)) {
+      // Igual que Añadir inventario: con una sola variante se usa esa; con
+      // varias, la pantalla pide elegirla.
+      if (product.variants.length === 1) variant = product.variants[0];
+      else return { status: "needs-variant", product };
+    }
+    let result: SaleAddResult | null;
     if (product.requiresSerial && variant) {
       const serial = product.serialUnits.find(
         (s) => s.variantId === variant.id && s.status === "disponible",
       );
-      if (!serial) return null;
-      return addToSale(product, variant, serial.serialNumber);
+      result = serial ? addToSale(product, variant, serial.serialNumber) : null;
+    } else {
+      result = addToSale(product, variant);
     }
-    return addToSale(product, variant);
+    return result ? { status: "added", result } : { status: "failed" };
   }, [addToSale]);
 
   const removeFromSale = useCallback((lineId: string) => {
@@ -640,6 +663,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
   const completeSale = useCallback(
     (payments: PaymentSplit[], cashReceived?: number) => {
       if (store.currentSale.items.length === 0) return null;
+      // Nunca cobrar un padre con variantes sin variante (no descuenta stock real).
+      if (saleLinesMissingVariant(store.currentSale.items, store.products).length > 0) return null;
       const saleSubtotal = calcSaleSubtotal(store.currentSale.items);
       const saleDiscount = store.currentSale.discountType === "percent"
         ? Math.min(saleSubtotal, saleSubtotal * (store.currentSale.discount / 100))

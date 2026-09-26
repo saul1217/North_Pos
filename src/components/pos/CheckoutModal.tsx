@@ -3,14 +3,14 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { usePos } from "@/context/PosContext";
-import { formatPosPrice, paymentMethodLabels } from "@/lib/pos/inventory";
+import { formatPosPrice, missingVariantMessage, paymentMethodLabels, saleLinesMissingVariant } from "@/lib/pos/inventory";
 import type { PaymentMethod, PaymentSplit } from "@/lib/pos/types";
 import { printSaleTicket } from "@/lib/pos/printTicket";
 
 const methods: PaymentMethod[] = ["efectivo", "tarjeta", "transferencia"];
 
 export function CheckoutModal() {
-  const { checkoutOpen, closeCheckout, total, completeSale } = usePos();
+  const { checkoutOpen, closeCheckout, total, completeSale, currentSale, products } = usePos();
   const [splits, setSplits] = useState<PaymentSplit[]>([
     { method: "efectivo", amount: 0 },
   ]);
@@ -70,6 +70,11 @@ export function CheckoutModal() {
     const received = cashSplit ? Number(receivedInput) || cashSplit.amount : undefined;
     if (cashSplit && received !== undefined && received < cashSplit.amount) {
       setError("El efectivo recibido debe cubrir la parte en efectivo.");
+      return;
+    }
+    const missingVariant = saleLinesMissingVariant(currentSale.items, products);
+    if (missingVariant.length > 0) {
+      setError(missingVariantMessage(missingVariant));
       return;
     }
     const sale = completeSale(valid, received);
