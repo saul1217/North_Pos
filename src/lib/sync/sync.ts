@@ -1,5 +1,6 @@
 import type { CompletedSale } from "@/lib/pos/types";
 import { addSyncedIds, getSyncedIds } from "./kv";
+import { postInChunks } from "./chunks";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { sanitizeReturnsForSync } from "@/lib/pos/quantities";
 
@@ -133,19 +134,11 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
     const synced = getSyncedIds();
     const updates = sales.filter((s) => synced.has(s.id));
     if (updates.length > 0) {
-      const result = await postSalesBatch(updates.map(toPayload));
-      if (!result.okHttp) {
-        if (!firstError) firstError = result.error;
-      } else {
-        const applied = result.data?.applied ?? [];
-        const skipped = result.data?.skipped ?? [];
-        const failed = result.data?.failed ?? [];
-        addSyncedIds([...applied, ...skipped]);
-        pushed += applied.length;
-        if (failed.length && !firstError) {
-          firstError = failed[0]?.reason || "Venta rechazada";
-        }
-      }
+      // En tandas de ≤100 (límite del backend); una tanda fallida no frena las demás.
+      const merged = await postInChunks(updates.map(toPayload), postSalesBatch);
+      addSyncedIds([...merged.applied, ...merged.skipped]);
+      pushed += merged.applied.length;
+      if (!firstError) firstError = merged.errors[0] ?? (merged.failed.length ? merged.failed[0]?.reason || "Venta rechazada" : undefined);
     }
 
     const stillPending = pendingSales(sales).length;
