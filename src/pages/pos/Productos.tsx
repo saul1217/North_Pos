@@ -9,7 +9,7 @@ import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, ecommerceFieldsOf, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
-import { SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
+import { MAX_INVENTORY_UNITS, SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
 import { SKU_LONG_WARNING, barcodeLabelQuality } from "@/lib/pos/barcodeLabel";
 
 type ProductForm = {
@@ -40,6 +40,15 @@ type InventoryReceiptLine = {
   matchedBy: "UPC" | "SKU" | "Code 128";
   quantity: number;
 };
+
+/** Cantidad de recepción válida: entero positivo (tope MAX_INVENTORY_UNITS); null si vacío o 0. */
+function parseReceiptQuantity(raw: string): number | null {
+  const trimmed = raw.trim();
+  if (!/^\d+$/.test(trimmed)) return null;
+  const value = Number.parseInt(trimmed, 10);
+  if (!Number.isFinite(value) || value < 1) return null;
+  return Math.min(MAX_INVENTORY_UNITS, value);
+}
 
 const emptyForm: ProductForm = {
   sku: "",
@@ -120,6 +129,9 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   const [receiptError, setReceiptError] = useState<string | null>(null);
   const [receiptSaving, setReceiptSaving] = useState(false);
   const [receiptMessage, setReceiptMessage] = useState<string | null>(null);
+  // Texto en edición de la cantidad de cada línea: permite borrar y reescribir
+  // sin que el campo salte a 1; se normaliza (mínimo 1) al salir o con Enter.
+  const [quantityDrafts, setQuantityDrafts] = useState<Record<string, string>>({});
   const receiptInputRef = useRef<HTMLInputElement>(null);
 
   const filtered = useMemo(() => {
@@ -157,6 +169,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     () => receiptLines.reduce((sum, line) => sum + line.quantity, 0),
     [receiptLines],
   );
+  const hasInvalidQuantity = receiptLines.some((line) => {
+    const draft = quantityDrafts[line.id];
+    return draft !== undefined && parseReceiptQuantity(draft) === null;
+  });
   const hasUnassignedVariant = receiptLines.some((line) => {
     const product = products.find((item) => item.id === line.productId);
     return Boolean(product?.hasVariants && product.variants.length > 0 && !line.variantId);
@@ -192,6 +208,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
   function openReceipt() {
     setReceiptCode("");
     setReceiptLines([]);
+    setQuantityDrafts({});
     setReceiptError(null);
     setReceiptMessage(null);
     setReceiptOpen(true);
@@ -267,8 +284,46 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   function setReceiptQuantity(lineId: string, quantity: number) {
     setReceiptLines((current) => current.map((line) =>
-      line.id === lineId ? { ...line, quantity: Math.max(1, Math.floor(quantity || 1)) } : line,
+      line.id === lineId
+        ? { ...line, quantity: Math.min(MAX_INVENTORY_UNITS, Math.max(1, Math.floor(quantity || 1))) }
+        : line,
     ));
+    clearQuantityDraft(lineId);
+  }
+
+  function bumpReceiptQuantity(lineId: string, delta: number) {
+    // Actualización funcional: respeta el valor ya normalizado por onBlur.
+    setReceiptLines((current) => current.map((line) =>
+      line.id === lineId
+        ? { ...line, quantity: Math.min(MAX_INVENTORY_UNITS, Math.max(1, line.quantity + delta)) }
+        : line,
+    ));
+    clearQuantityDraft(lineId);
+  }
+
+  function clearQuantityDraft(lineId: string) {
+    setQuantityDrafts((current) => {
+      if (!(lineId in current)) return current;
+      const { [lineId]: _removed, ...rest } = current;
+      return rest;
+    });
+  }
+
+  function editReceiptQuantity(lineId: string, raw: string) {
+    // Solo dígitos; vacío se permite mientras se edita.
+    if (!/^\d*$/.test(raw)) return;
+    setQuantityDrafts((current) => ({ ...current, [lineId]: raw }));
+    const parsed = parseReceiptQuantity(raw);
+    if (parsed !== null) {
+      setReceiptLines((current) => current.map((line) => line.id === lineId ? { ...line, quantity: parsed } : line));
+    }
+  }
+
+  function commitReceiptQuantity(lineId: string) {
+    const draft = quantityDrafts[lineId];
+    if (draft === undefined) return;
+    // Vacío o 0 al salir del campo: se normaliza al mínimo de 1 unidad.
+    setReceiptQuantity(lineId, parseReceiptQuantity(draft) ?? 1);
   }
 
   function setReceiptVariant(lineId: string, variantId: string) {
@@ -300,6 +355,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     }
     if (hasUnassignedVariant) {
       setReceiptError("Selecciona la variante de todos los artículos antes de confirmar.");
+      return;
+    }
+    if (hasInvalidQuantity) {
+      setReceiptError("Captura una cantidad entera mayor que cero en cada artículo.");
       return;
     }
 
@@ -896,7 +955,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                             <div className="grid grid-cols-[44px_1fr_44px]">
                               <button
                                 type="button"
-                                onClick={() => setReceiptQuantity(line.id, line.quantity - 1)}
+                                onClick={() => bumpReceiptQuantity(line.id, -1)}
                                 className="grid h-11 place-items-center border border-north-border hover:bg-north-background focus-visible:ring-2 focus-visible:ring-north-primary"
                                 aria-label={`Restar una unidad de ${product.name}`}
                               >
@@ -904,16 +963,25 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                               </button>
                               <input
                                 aria-label={`Cantidad de ${product.name}`}
-                                type="number"
-                                min="1"
-                                step="1"
-                                value={line.quantity}
-                                onChange={(event) => setReceiptQuantity(line.id, Number(event.target.value))}
+                                type="text"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                value={quantityDrafts[line.id] ?? String(line.quantity)}
+                                onChange={(event) => editReceiptQuantity(line.id, event.target.value)}
+                                onBlur={() => commitReceiptQuantity(line.id)}
+                                onKeyDown={(event) => {
+                                  if (event.key === "Enter") {
+                                    event.preventDefault();
+                                    commitReceiptQuantity(line.id);
+                                    receiptInputRef.current?.focus();
+                                  }
+                                }}
+                                aria-invalid={quantityDrafts[line.id] !== undefined && parseReceiptQuantity(quantityDrafts[line.id]) === null}
                                 className="h-11 min-w-0 border-y border-north-border text-center font-semibold focus-visible:ring-2 focus-visible:ring-north-primary"
                               />
                               <button
                                 type="button"
-                                onClick={() => setReceiptQuantity(line.id, line.quantity + 1)}
+                                onClick={() => bumpReceiptQuantity(line.id, 1)}
                                 className="grid h-11 place-items-center border border-north-border hover:bg-north-background focus-visible:ring-2 focus-visible:ring-north-primary"
                                 aria-label={`Sumar una unidad de ${product.name}`}
                               >
@@ -923,7 +991,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                           </div>
                           <button
                             type="button"
-                            onClick={() => setReceiptLines((current) => current.filter((item) => item.id !== line.id))}
+                            onClick={() => {
+                              setReceiptLines((current) => current.filter((item) => item.id !== line.id));
+                              clearQuantityDraft(line.id);
+                            }}
                             className="grid h-11 w-11 place-items-center text-red-700 hover:bg-red-50 focus-visible:ring-2 focus-visible:ring-red-600"
                             aria-label={`Quitar ${product.name} del lote`}
                           >
@@ -939,7 +1010,9 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
             <div className="flex flex-col gap-3 border-t border-north-border bg-white px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-sm text-north-muted">
-                Se registrará una entrada de <strong className="text-north-ink">{receiptUnits}</strong> unidad{receiptUnits === 1 ? "" : "es"}.
+                {hasInvalidQuantity
+                  ? <span className="font-semibold text-red-700">Completa la cantidad de cada artículo (entero mayor que cero).</span>
+                  : <>Se registrará una entrada de <strong className="text-north-ink">{receiptUnits}</strong> unidad{receiptUnits === 1 ? "" : "es"}.</>}
               </p>
               <div className="flex justify-end gap-2">
                 <button
@@ -953,7 +1026,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                 <button
                   type="button"
                   onClick={() => void confirmReceipt()}
-                  disabled={receiptSaving || receiptLines.length === 0 || hasUnassignedVariant}
+                  disabled={receiptSaving || receiptLines.length === 0 || hasUnassignedVariant || hasInvalidQuantity}
                   data-guide="receipt.confirm"
                   className="inline-flex h-11 items-center gap-2 bg-north-primary px-5 text-sm font-semibold text-white hover:bg-north-primary/90 focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                 >
