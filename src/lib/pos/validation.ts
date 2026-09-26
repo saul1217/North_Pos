@@ -78,3 +78,17 @@ export function parseGlobalDiscount(
   }
   return { ok: true, value };
 }
+
+export const SKU_CHARSET_ERROR =
+  "El SKU solo puede tener letras sin acento, números y símbolos básicos (sin Ñ ni acentos).";
+
+/** Caracteres del SKU que no caben en Code 128 (fuera de ASCII imprimible 0x20–0x7E). */
+export function invalidSkuCharacters(sku: string): string[] {
+  return [...new Set([...sku].filter((character) => !/^[\x20-\x7E]$/.test(character)))];
+}
+
+/** Devuelve el mensaje de error si el SKU no puede imprimirse como Code 128. */
+export function validateSkuCharset(sku: string): string | null {
+  const invalid = invalidSkuCharacters(sku.trim());
+  return invalid.length > 0 ? `${SKU_CHARSET_ERROR} Caracteres no válidos: ${invalid.join(" ")}` : null;
+}

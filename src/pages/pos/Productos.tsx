@@ -9,6 +9,7 @@ import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, fetchSkuCategories, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
+import { SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
 
 type ProductForm = {
   sku: string;
@@ -464,6 +465,15 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         setFormError("Cada modelo debe tener un precio mayor a 0.");
         return;
       }
+    }
+    const skusToCheck = [
+      ...(editing && formMode === "product" ? [form.sku] : []),
+      ...form.variants.map((variant) => variant.sku),
+    ].map((sku) => (sku ?? "").trim()).filter(Boolean);
+    const invalidSkus = skusToCheck.filter((sku) => invalidSkuCharacters(sku).length > 0);
+    if (invalidSkus.length > 0) {
+      setFormError(`${SKU_CHARSET_ERROR} Revisa: ${invalidSkus.join(", ")}.`);
+      return;
     }
     if (!editing && !selectedSkuCategory) {
       setFormError("Configura el prefijo de esta categoría antes de guardar.");
