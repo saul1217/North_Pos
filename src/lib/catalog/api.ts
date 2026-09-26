@@ -2,13 +2,115 @@ import { API_BASE } from "@/lib/sync/sync";
 import type { PosProduct, ProductVariant, WorkshopOrder } from "@/lib/pos/types";
 import { clearAuthSession, getAccessToken, type AuthSession } from "@/lib/auth";
 
-export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "location" | "sku" | "barcode" | "variants"> & {
+/** Campos de e-commerce que el backend acepta y que el POS no edita, pero debe conservar. */
+export type ProductEcommerceFields = {
+  brand?: string;
+  description?: string;
+  features?: string[];
+  specifications?: Record<string, string>;
+  compareAtPrice?: number;
+  featured?: boolean;
+  isNew?: boolean;
+  bikeType?: string;
+  compatibility?: string;
+};
+
+const ECOMMERCE_FIELDS = [
+  "brand", "description", "features", "specifications", "compareAtPrice",
+  "featured", "isNew", "bikeType", "compatibility",
+] as const satisfies ReadonlyArray<keyof ProductEcommerceFields>;
+
+export type ProductInput = Omit<PosProduct, "id" | "serialUnits" | "stock" | "location" | "sku" | "barcode" | "variants"> & ProductEcommerceFields & {
   sku?: string;
   barcode?: string;
   stock?: number;
+  location?: string;
   variants?: Array<Omit<ProductVariant, "id" | "location" | "sku" | "barcode"> & { id?: string; location?: string; sku?: string; barcode?: string }>;
   serialUnits?: Array<Omit<PosProduct["serialUnits"][number], "id" | "location"> & { id?: string; location?: string }>;
 };
+
+type VariantInput = NonNullable<ProductInput["variants"]>[number];
+type SerialUnitInput = NonNullable<ProductInput["serialUnits"]>[number];
+
+/**
+ * El backend valida con whitelist + forbidNonWhitelisted: cualquier campo extra
+ * (productId, createdAt, updatedAt… que llegan del servidor) responde 400.
+ * Por eso las variantes y series se envían solo con los campos del DTO.
+ */
+export function toVariantInput(variant: Partial<ProductVariant> & { label: string; price: number }): VariantInput {
+  return {
+    ...(variant.id ? { id: variant.id } : {}),
+    // SKU vacío = variante nueva: se omite para que el servidor asigne el consecutivo.
+    ...(variant.sku?.trim() ? { sku: variant.sku.trim() } : {}),
+    upc: variant.upc?.trim() ?? "",
+    ...(variant.barcode?.trim() ? { barcode: variant.barcode.trim() } : {}),
+    label: variant.label,
+    price: Number(variant.price) || 0,
+    stock: Math.max(0, Math.floor(Number(variant.stock) || 0)),
+    minStock: Math.max(0, Math.floor(Number(variant.minStock) || 0)),
+    ...(variant.location !== undefined ? { location: variant.location ?? "" } : {}),
+    ...(variant.size ? { size: variant.size } : {}),
+    ...(variant.wheelSize ? { wheelSize: variant.wheelSize } : {}),
+    ...(variant.color ? { color: variant.color } : {}),
+    ...(variant.model !== undefined ? { model: variant.model ?? "" } : {}),
+  };
+}
+
+export function toSerialUnitInput(unit: Partial<PosProduct["serialUnits"][number]> & { serialNumber: string }): SerialUnitInput {
+  return {
+    ...(unit.id ? { id: unit.id } : {}),
+    serialNumber: unit.serialNumber,
+    ...(unit.variantId ? { variantId: unit.variantId } : {}),
+    status: unit.status ?? "disponible",
+    ...(unit.location !== undefined ? { location: unit.location ?? "" } : {}),
+  };
+}
+
+/** Campos de e-commerce presentes en el producto del servidor (para no borrarlos al actualizar). */
+export function ecommerceFieldsOf(product: PosProduct): ProductEcommerceFields {
+  const source = product as PosProduct & Record<string, unknown>;
+  const fields: Record<string, unknown> = {};
+  for (const key of ECOMMERCE_FIELDS) {
+    if (source[key] !== undefined && source[key] !== null) fields[key] = source[key];
+  }
+  return fields as ProductEcommerceFields;
+}
+
+/**
+ * Payload completo de actualización a partir del producto actual. El PATCH del
+ * backend reemplaza el producto (UpdateProductDto = CreateProductDto), así que
+ * hay que reenviar existencias, ubicación y datos de e-commerce para no perderlos.
+ */
+export function productToInput(product: PosProduct): ProductInput {
+  return {
+    sku: product.sku,
+    name: product.name,
+    model: product.model ?? "",
+    category: product.category,
+    price: Number(product.price) || 0,
+    stock: Math.max(0, Math.floor(Number(product.stock) || 0)),
+    minStock: Math.max(0, Math.floor(Number(product.minStock) || 0)),
+    upc: product.upc ?? "",
+    barcode: product.barcode,
+    image: product.image ?? "",
+    images: product.images ?? [],
+    status: product.status,
+    location: product.location ?? "",
+    hasVariants: product.hasVariants,
+    requiresSerial: product.requiresSerial,
+    variants: product.variants.map(toVariantInput),
+    serialUnits: product.serialUnits.map(toSerialUnitInput),
+    ...ecommerceFieldsOf(product),
+  };
+}
+
+function sanitizeProductInput(input: ProductInput): ProductInput {
+  return {
+    ...input,
+    ...(input.variants ? { variants: input.variants.map(toVariantInput) } : {}),
+    ...(input.serialUnits ? { serialUnits: input.serialUnits.map(toSerialUnitInput) } : {}),
+  };
+}
 
 export type SkuCategory = {
   category: string;
@@ -107,10 +209,8 @@ export function syncProducts(input: ProductSyncState, accessToken?: string | nul
           minStock: Math.max(0, Number(cleanVariant.minStock) || 0),
         };
       }),
-      serialUnits: serialUnits.map((unit) => {
-        const { createdAt: _unitCreatedAt, updatedAt: _unitUpdatedAt, ...cleanUnit } = unit as typeof unit & { createdAt?: string; updatedAt?: string };
-        return cleanUnit;
-      }),
+      // Solo campos del DTO: el servidor devuelve productId/createdAt en cada serie.
+      serialUnits: serialUnits.map(toSerialUnitInput),
     };
   });
   return request<ProductSyncState>("/api/products/sync", {
@@ -122,14 +222,14 @@ export function syncProducts(input: ProductSyncState, accessToken?: string | nul
 export function createProduct(input: ProductInput): Promise<PosProduct> {
   return request<PosProduct>("/api/products", {
     method: "POST",
-    body: JSON.stringify(input),
+    body: JSON.stringify(sanitizeProductInput(input)),
   });
 }
 
 export function updateProduct(id: string, input: ProductInput): Promise<PosProduct> {
   return request<PosProduct>(`/api/products/${id}`, {
     method: "PATCH",
-    body: JSON.stringify(input),
+    body: JSON.stringify(sanitizeProductInput(input)),
   });
 }
 

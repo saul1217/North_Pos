@@ -7,7 +7,7 @@ import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
-import { createSkuCategory, fetchSkuCategories, uploadProductImage } from "@/lib/catalog/api";
+import { createSkuCategory, ecommerceFieldsOf, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
 import { SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
 import { SKU_LONG_WARNING, barcodeLabelQuality } from "@/lib/pos/barcodeLabel";
@@ -379,22 +379,11 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     setStatusSaving(product.id);
     setProductMessage(null);
     try {
+      // Solo cambia el estado; el resto del payload replica el producto con los
+      // campos que acepta el backend (sin productId/createdAt en variantes).
       await updateProduct(product.id, {
-        sku: product.sku,
-        name: product.name,
-        model: product.model,
-        category: product.category,
-        price: product.price,
-        minStock: product.minStock,
-        upc: product.upc,
-        barcode: product.barcode,
-        image: product.image,
-        images: product.images ?? [],
+        ...productToInput(product),
         status: product.status === "activo" ? "inactivo" : "activo",
-        hasVariants: product.hasVariants,
-        requiresSerial: product.requiresSerial,
-        variants: product.variants,
-        serialUnits: product.serialUnits,
       });
       setProductMessage(`${product.name} ahora está ${product.status === "activo" ? "inactivo" : "activo"}.`);
     } catch (error) {
@@ -473,9 +462,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         .filter((result): result is PromiseFulfilledResult<{ bucket: string; path: string; url: string }> => result.status === "fulfilled")
         .map((result) => result.value);
       const modelVariants = form.variants.filter((variant) => variant.label.trim()).map((variant) => {
-        const { productId: _productId, createdAt: _createdAt, updatedAt: _updatedAt, ...cleanVariant } = variant as ProductVariant & { productId?: string; createdAt?: string; updatedAt?: string };
-        return {
-          ...cleanVariant,
+        return toVariantInput({
+          ...variant,
           label: variant.label.trim(),
           // Los códigos se guardan sin espacios alrededor (etiqueta, Venta y Recepción coinciden).
           sku: (variant.sku ?? "").trim(),
@@ -485,7 +473,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
           price: Number(variant.price) || 0,
           stock: Number(variant.stock) || 0,
           minStock: Number(variant.minStock) || 0,
-        };
+        });
       });
       const input: ProductInput = {
       sku: editing ? form.sku.trim() : undefined,
@@ -503,7 +491,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       hasVariants: formMode === "models" || form.variants.length > 0,
       requiresSerial: formMode === "models" ? false : form.requiresSerial,
       variants: formMode === "models" ? modelVariants : [],
-      serialUnits: formMode === "models" ? [] : form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => ({ ...unit, serialNumber: unit.serialNumber.trim() })),
+      serialUnits: formMode === "models" ? [] : form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => toSerialUnitInput({ ...unit, serialNumber: unit.serialNumber.trim() })),
+      // El PATCH reemplaza el producto: conservamos ubicación y datos de e-commerce
+      // que este formulario no edita.
+      ...(editing ? { location: editing.location ?? "", ...ecommerceFieldsOf(editing) } : {}),
       };
       if (editing) await updateProduct(editing.id, input);
       else await createProduct(input);
