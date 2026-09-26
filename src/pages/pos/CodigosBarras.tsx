@@ -2,7 +2,8 @@ import { Printer, RefreshCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import { getCategoryLabel } from "@/lib/pos/inventory";
-import { code128Bits } from "@/lib/pos/code128";
+import type { BarcodeLabelData } from "@/lib/pos/barcodeLabel";
+import { barcodeLabelsPreviewHtml, printBarcodeLabels } from "@/lib/pos/printBarcodeLabels";
 import type { PosProduct } from "@/lib/pos/types";
 
 type BarcodeEntry = {
@@ -10,6 +11,7 @@ type BarcodeEntry = {
   productId: string;
   name: string;
   variantLabel?: string;
+  model?: string;
   category: PosProduct["category"];
   sku: string;
   upc?: string;
@@ -24,6 +26,7 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
         productId: product.id,
         name: product.name,
         variantLabel: variant.label,
+        model: variant.model || product.model,
         category: product.category,
         sku: variant.sku,
         upc: variant.upc,
@@ -34,6 +37,7 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
       key: product.id,
       productId: product.id,
       name: product.name,
+      model: product.model,
       category: product.category,
       sku: product.sku,
       upc: product.upc,
@@ -42,38 +46,8 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
   }).filter((entry) => entry.sku.trim());
 }
 
-function BarcodeGraphic({ value }: { value: string }) {
-  const bits = code128Bits(value);
-  const paddedBits = `0000000000${bits}0000000000`;
-  return (
-    <svg
-      viewBox={`0 0 ${paddedBits.length} 46`}
-      preserveAspectRatio="none"
-      className="h-14 w-full"
-      role="img"
-      aria-label={`Código de barras ${value}`}
-      shapeRendering="crispEdges"
-    >
-      <rect width="100%" height="100%" fill="white" />
-      {paddedBits.split("").map((bit, index) => bit === "1" && (
-        <rect key={index} x={index} y="0" width="1" height="34" fill="black" />
-      ))}
-    </svg>
-  );
-}
-
-function BarcodeLabel({ entry, onlyBarcode }: { entry: BarcodeEntry; onlyBarcode: boolean }) {
-  return (
-    <article className="pos-barcode-label bg-white text-black">
-      {!onlyBarcode && <>
-        <p className="truncate text-[10px] font-semibold uppercase">North Bike</p>
-        <p className="truncate text-xs font-medium">{entry.name}</p>
-        {entry.variantLabel && <p className="truncate text-[10px]">{entry.variantLabel}</p>}
-      </>}
-      <BarcodeGraphic value={entry.sku} />
-      {!onlyBarcode && <p className="text-center font-mono text-[11px] tracking-wide">{entry.sku}</p>}
-    </article>
-  );
+function toLabelData(entry: BarcodeEntry): BarcodeLabelData {
+  return { code: entry.sku, name: entry.name, model: entry.model, variantLabel: entry.variantLabel };
 }
 
 export default function PosCodigosBarrasPage() {
@@ -81,6 +55,8 @@ export default function PosCodigosBarrasPage() {
   const [query, setQuery] = useState("");
   const [copies, setCopies] = useState<Record<string, number>>({});
   const [onlyBarcode, setOnlyBarcode] = useState(false);
+  const [printing, setPrinting] = useState(false);
+  const [printError, setPrintError] = useState<string | null>(null);
   const entries = useMemo(() => getBarcodeEntries(products), [products]);
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -91,7 +67,25 @@ export default function PosCodigosBarrasPage() {
   }, [entries, query]);
   const selectedCount = Object.values(copies).reduce((sum, count) => sum + count, 0);
   const selectedEntries = entries.flatMap((entry) => Array.from({ length: copies[entry.key] ?? 0 }, () => entry));
+  const previewHtml = useMemo(() => {
+    const unique = entries.filter((entry) => (copies[entry.key] ?? 0) > 0).slice(0, 12);
+    return unique.length > 0 ? barcodeLabelsPreviewHtml(unique.map(toLabelData), onlyBarcode) : "";
+  }, [entries, copies, onlyBarcode]);
   const allVisibleSelected = filtered.length > 0 && filtered.every((entry) => (copies[entry.key] ?? 0) > 0);
+
+  async function printSelected() {
+    if (selectedEntries.length === 0 || printing) return;
+    setPrinting(true);
+    setPrintError(null);
+    try {
+      const result = await printBarcodeLabels(selectedEntries.map(toLabelData), onlyBarcode);
+      if (!result.ok && !result.cancelled) setPrintError(result.error ?? "No se pudieron imprimir las etiquetas.");
+    } catch (error) {
+      setPrintError((error as Error).message || "No se pudieron imprimir las etiquetas.");
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   function toggleEntry(entry: BarcodeEntry) {
     setCopies((current) => ({ ...current, [entry.key]: current[entry.key] ? 0 : 1 }));
@@ -125,14 +119,15 @@ export default function PosCodigosBarrasPage() {
             <button type="button" onClick={() => setOnlyBarcode((current) => !current)} aria-pressed={onlyBarcode} className={`inline-flex h-10 items-center gap-2 border px-3 text-sm font-semibold ${onlyBarcode ? "border-north-primary bg-north-primary/10 text-north-primary" : "border-north-border"}`}>
               <Printer className="h-4 w-4" />{onlyBarcode ? "Solo código activo" : "Solo código"}
             </button>
-            <button type="button" onClick={() => window.print()} disabled={selectedCount === 0} className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
-              <Printer className="h-4 w-4" />Imprimir {selectedCount > 0 ? `(${selectedCount})` : "etiquetas"}
+            <button type="button" onClick={() => void printSelected()} disabled={selectedCount === 0 || printing} className="inline-flex h-10 items-center gap-2 bg-north-primary px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50">
+              <Printer className="h-4 w-4" />{printing ? "Imprimiendo..." : `Imprimir ${selectedCount > 0 ? `(${selectedCount})` : "etiquetas"}`}
             </button>
           </div>
         </div>
         <div className="mt-4 border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          El código local se genera con el SKU exacto. Al imprimir, elige la impresora de etiquetas instalada en esta computadora.
+          El código local se genera con el SKU exacto. Etiqueta de 50.8 × 25.4 mm (2&quot; × 1&quot;): al imprimir, elige la impresora de etiquetas instalada en esta computadora.
         </div>
+        {printError && <p className="mt-3 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{printError}</p>}
         <div className="relative mt-4 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
           <input type="search" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Buscar producto, variante o SKU..." className="h-10 w-full border border-north-border bg-north-background pl-10 pr-3 text-sm" />
@@ -169,8 +164,9 @@ export default function PosCodigosBarrasPage() {
         </div>
       </main>
 
-      {selectedEntries.length > 0 && <section className="pos-barcode-print grid grid-cols-[repeat(auto-fill,minmax(58mm,1fr))] gap-4 p-4">
-        {selectedEntries.map((entry, index) => <BarcodeLabel key={`${entry.key}-${index}`} entry={entry} onlyBarcode={onlyBarcode} />)}
+      {previewHtml && <section className="pos-no-print border-t border-north-border bg-white p-4 md:px-6">
+        <p className="mb-2 text-xs font-semibold uppercase text-north-steel">Vista previa (50.8 × 25.4 mm)</p>
+        <iframe title="Vista previa de etiquetas" srcDoc={previewHtml} className="h-48 w-full border border-north-border bg-north-background" />
       </section>}
     </div>
   );

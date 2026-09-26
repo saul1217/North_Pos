@@ -21,6 +21,7 @@ contextBridge.exposeInMainWorld("pos", {
   exportBackup: () => ipcRenderer.invoke("pos:exportBackup"),
   importBackup: () => ipcRenderer.invoke("pos:importBackup"),
   printTicket: (payload) => ipcRenderer.invoke("pos:printTicket", payload),
+  printLabels: (payload) => ipcRenderer.invoke("pos:printLabels", payload),
   updates: {
     check: () => ipcRenderer.invoke("updates:check"),
     download: () => ipcRenderer.invoke("updates:download"),

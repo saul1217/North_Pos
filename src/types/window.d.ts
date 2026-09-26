@@ -28,6 +28,7 @@ declare global {
           sep?: boolean;
         }>;
       }) => Promise<{ ok: boolean; deviceName: string | null; error?: string }>;
+      printLabels?: (payload: { html: string }) => Promise<{ ok: boolean; cancelled?: boolean; error?: string }>;
       updates?: {
         check: () => Promise<{ status: string; version?: string }>;
         download: () => Promise<boolean>;
