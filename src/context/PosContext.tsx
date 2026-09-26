@@ -62,6 +62,7 @@ import {
   payWorkshopOrder as payWorkshopOrderApi,
   syncProducts,
   type ProductInput,
+  type ProductPatchInput,
 } from "@/lib/catalog/api";
 import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/auth";
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
@@ -317,7 +318,7 @@ type PosContextValue = {
   newSale: () => void;
   refreshCatalog: () => Promise<void>;
   createProduct: (input: ProductInput) => Promise<PosProduct>;
-  updateProduct: (id: string, input: ProductInput) => Promise<PosProduct>;
+  updateProduct: (id: string, input: ProductPatchInput) => Promise<PosProduct>;
   deleteProduct: (id: string) => Promise<void>;
   mergeRemoteSales: (sales: CompletedSale[]) => void;
 };
@@ -474,7 +475,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     return product;
   }, [refreshCatalog]);
 
-  const updateProduct = useCallback(async (id: string, input: ProductInput) => {
+  const updateProduct = useCallback(async (id: string, input: ProductPatchInput) => {
     if (getAuthSession()?.user.role !== "admin") {
       throw new Error("Solo un administrador puede editar productos.");
     }
