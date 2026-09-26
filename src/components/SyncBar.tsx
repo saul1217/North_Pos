@@ -36,6 +36,8 @@ export function SyncBar() {
   const syncingRef = useRef(false);
   const failureCountRef = useRef(0);
   const firstSyncShownRef = useRef(false);
+  // The current error came from pushing sales (a reject reason), not from a download.
+  const salesErrorRef = useRef(false);
 
   const runSync = useCallback(async (force = false) => {
     if (syncingRef.current) return;
@@ -47,6 +49,7 @@ export function SyncBar() {
     syncingRef.current = true;
     setSyncing(true);
     setError(null);
+    salesErrorRef.current = false;
     if (!firstSyncShownRef.current) {
       firstSyncShownRef.current = true;
       setShowStatus(true);
@@ -60,9 +63,11 @@ export function SyncBar() {
       // Surface server reject reasons even when some sales applied (ok:true + error).
       if (res.error) {
         setError(res.error);
+        salesErrorRef.current = true;
         failed = true;
       } else if (!res.ok) {
         failed = true;
+        salesErrorRef.current = true;
         setError("error");
       } else {
         setError(null);
@@ -95,6 +100,13 @@ export function SyncBar() {
   useEffect(() => {
     const unsynced = unsyncedSalesCount(sales);
     setPending(unsynced);
+    // A reject reason refers to sales that were pending. If the merge that
+    // follows the push settles them (server copy taken as baseline), nothing is
+    // pending anymore and the old reason must not stay on screen.
+    if (unsynced === 0 && salesErrorRef.current) {
+      salesErrorRef.current = false;
+      setError(null);
+    }
     const hasPendingWork = unsynced > 0 || workshopSyncPending > 0;
     if (!hasPendingWork) return;
     const t = setTimeout(() => void runSync(), 800);
