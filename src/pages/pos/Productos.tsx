@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Check, Eye, Minus, PackagePlus, Pencil, Plus, RefreshCw, ScanBarcode, Search, Trash2, Upload, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
-import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode } from "@/lib/pos/inventory";
+import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode, type CodeMatchKind } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, ecommerceFieldsOf, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
@@ -35,11 +35,18 @@ type InventoryReceiptLine = {
   id: string;
   productId: string;
   variantId?: string;
-  /** Código escaneado (UPC global, SKU local o Code 128 local). */
-  code: string;
-  matchedBy: "UPC" | "SKU" | "Code 128";
+  /** Códigos distintos con los que se escaneó este artículo (UPC global, SKU local o Code 128 local). */
+  codes: Array<{ code: string; matchedBy: CodeMatchKind }>;
   quantity: number;
 };
+
+function mergeReceiptCodes(base: InventoryReceiptLine["codes"], extra: InventoryReceiptLine["codes"]): InventoryReceiptLine["codes"] {
+  const merged = [...base];
+  for (const entry of extra) {
+    if (!merged.some((item) => normalizeCode(item.code) === normalizeCode(entry.code))) merged.push(entry);
+  }
+  return merged;
+}
 
 /** Cantidad de recepción válida: entero positivo (tope MAX_INVENTORY_UNITS); null si vacío o 0. */
 function parseReceiptQuantity(raw: string): number | null {
@@ -230,9 +237,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
     // Misma búsqueda que Venta: UPC global → SKU local → Code 128 local,
     // sin espacios alrededor ni distinción de mayúsculas.
-    const needle = normalizeCode(code);
     const lookup = lookupProductByCode(products, code);
-    const matchedBy: InventoryReceiptLine["matchedBy"] = lookup.status === "not-found" ? "UPC" : lookup.matchedBy;
+    const matchedBy: CodeMatchKind = lookup.status === "not-found" ? "UPC" : lookup.matchedBy;
     const kindLabel = matchedBy === "UPC" ? "UPC" : matchedBy === "SKU" ? "SKU" : "código";
     if (lookup.status === "ambiguous") {
       setReceiptError(`El ${kindLabel} ${code} está asignado a más de un artículo. Corrígelo antes de recibir inventario.`);
@@ -257,26 +263,26 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
     const variantId = lookup.variant?.id
       ?? (product.variants.length === 1 ? product.variants[0].id : undefined);
-    setReceiptLines((current) => {
-      const existing = current.find((line) =>
-        line.productId === product.id
-        && line.variantId === variantId
-        && (variantId !== undefined || line.code.toLowerCase() === needle),
-      );
-      if (existing) {
-        return current.map((line) =>
-          line.id === existing.id ? { ...line, quantity: line.quantity + 1 } : line,
-        );
-      }
-      return [...current, {
+    // Una línea por artículo resuelto (producto + variante), sin importar con
+    // qué código se escaneó: UPC y SKU del mismo producto suman en la misma línea.
+    const scanned = [{ code, matchedBy }];
+    const existing = receiptLines.find((line) => line.productId === product.id && line.variantId === variantId);
+    if (existing) {
+      setReceiptLines((current) => current.map((line) =>
+        line.id === existing.id
+          ? { ...line, quantity: Math.min(MAX_INVENTORY_UNITS, line.quantity + 1), codes: mergeReceiptCodes(line.codes, scanned) }
+          : line,
+      ));
+      clearQuantityDraft(existing.id);
+    } else {
+      setReceiptLines((current) => [...current, {
         id: crypto.randomUUID(),
         productId: product.id,
         variantId,
-        code,
-        matchedBy,
+        codes: scanned,
         quantity: 1,
-      }];
-    });
+      }]);
+    }
     setReceiptCode("");
     setReceiptError(null);
     receiptInputRef.current?.focus();
@@ -337,7 +343,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         return current
           .filter((line) => line.id !== lineId)
           .map((line) => line.id === duplicate.id
-            ? { ...line, quantity: line.quantity + source.quantity }
+            ? { ...line, quantity: Math.min(MAX_INVENTORY_UNITS, line.quantity + source.quantity), codes: mergeReceiptCodes(line.codes, source.codes) }
             : line);
       }
       return current.map((line) => line.id === lineId
@@ -926,7 +932,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">{product.name}</p>
                             <p className="mt-0.5 truncate font-mono text-xs text-north-muted">
-                              {variant?.sku ?? product.sku} · {line.matchedBy} {line.code}
+                              {variant?.sku ?? product.sku} · {line.codes.map((entry) => `${entry.matchedBy} ${entry.code}`).join(" · ")}
                             </p>
                             {needsVariant ? (
                               <label className="mt-2 block text-xs font-semibold text-amber-800">
