@@ -14,11 +14,11 @@ export const tutorials: TutorialDefinition[] = [
   },
   {
     id: "receive-inventory", version: 1, title: "Recibir inventario", category: "Puesta en marcha",
-    description: "Suma existencias usando el UPC global registrado en cada producto.",
+    description: "Suma existencias escaneando el UPC global o el SKU/código local de cada producto.",
     route: "/pos/productos", roles: ["admin", "cajero", "taller"], prerequisite: "active-product",
     steps: [
       { id: "open", title: "Inicia una recepción", body: "Selecciona Añadir inventario para abrir la recepción rápida.", target: "products.receipt", advanceOn: "target" },
-      { id: "scan", title: "Escanea el UPC", body: "Cada lectura agrega una unidad. Revisa las cantidades y variantes antes de confirmar.", target: "receipt.scan", advanceOn: "next" },
+      { id: "scan", title: "Escanea el UPC o SKU", body: "Cada lectura agrega una unidad. Revisa las cantidades y variantes antes de confirmar.", target: "receipt.scan", advanceOn: "next" },
       { id: "confirm", title: "Confirma la entrada", body: "Al confirmar, las existencias se actualizan y queda registrado el movimiento.", target: "receipt.confirm", advanceOn: "milestone", milestone: "inventory-received" },
       { id: "done", title: "Inventario actualizado", body: "La recepción quedó registrada. Consulta Inventario para revisar el movimiento.", advanceOn: "next", nextLabel: "Finalizar" },
     ],

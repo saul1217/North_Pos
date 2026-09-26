@@ -909,7 +909,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         quantity,
         "entrada",
         reference,
-        "Recepción rápida por UPC global",
+        "Recepción rápida por UPC global o SKU local",
       );
       products = result.products;
       movements.push(result.movement);
