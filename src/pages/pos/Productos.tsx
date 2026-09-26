@@ -33,7 +33,9 @@ type InventoryReceiptLine = {
   id: string;
   productId: string;
   variantId?: string;
-  upc: string;
+  /** Código escaneado (UPC global, SKU local o Code 128 local). */
+  code: string;
+  matchedBy: "UPC" | "SKU" | "Code 128";
   quantity: number;
 };
 
@@ -200,22 +202,46 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
 
   function scanInventoryUpc(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const upc = receiptCode.trim();
-    if (!upc) {
-      setReceiptError("Escanea o captura un UPC global.");
+    const code = receiptCode.trim();
+    if (!code) {
+      setReceiptError("Escanea o captura un UPC global o SKU local.");
       receiptInputRef.current?.focus();
       return;
     }
 
-    const variantMatches = products.flatMap((product) =>
-      product.variants
-        .filter((variant) => variant.upc?.trim() === upc)
-        .map((variant) => ({ product, variant })),
-    );
-    const productMatches = products.filter((product) => product.upc?.trim() === upc);
+    // Orden de búsqueda: UPC global → SKU local → Code 128 local.
+    // Comparación sin distinguir mayúsculas y sin espacios alrededor.
+    const needle = code.toLowerCase();
+    const same = (value: string | undefined) => (value ?? "").trim().toLowerCase() === needle;
+    const stages: Array<{
+      kind: InventoryReceiptLine["matchedBy"];
+      variantField: (variant: ProductVariant) => string | undefined;
+      productField: (product: PosProduct) => string | undefined;
+    }> = [
+      { kind: "UPC", variantField: (v) => v.upc, productField: (p) => p.upc },
+      { kind: "SKU", variantField: (v) => v.sku, productField: (p) => p.sku },
+      { kind: "Code 128", variantField: (v) => v.barcode, productField: (p) => p.barcode },
+    ];
 
+    let variantMatches: Array<{ product: PosProduct; variant: ProductVariant }> = [];
+    let productMatches: PosProduct[] = [];
+    let matchedBy: InventoryReceiptLine["matchedBy"] = "UPC";
+    for (const stage of stages) {
+      variantMatches = products.flatMap((product) =>
+        product.variants
+          .filter((variant) => same(stage.variantField(variant)))
+          .map((variant) => ({ product, variant })),
+      );
+      productMatches = products.filter((product) => same(stage.productField(product)));
+      if (variantMatches.length > 0 || productMatches.length > 0) {
+        matchedBy = stage.kind;
+        break;
+      }
+    }
+
+    const kindLabel = matchedBy === "UPC" ? "UPC" : matchedBy === "SKU" ? "SKU" : "código";
     if (variantMatches.length > 1 || (variantMatches.length === 0 && productMatches.length > 1)) {
-      setReceiptError(`El UPC ${upc} está asignado a más de un artículo. Corrígelo antes de recibir inventario.`);
+      setReceiptError(`El ${kindLabel} ${code} está asignado a más de un artículo. Corrígelo antes de recibir inventario.`);
       setReceiptCode("");
       receiptInputRef.current?.focus();
       return;
@@ -224,7 +250,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     const variantMatch = variantMatches[0];
     const product = variantMatch?.product ?? productMatches[0];
     if (!product) {
-      setReceiptError(`El UPC ${upc} no está registrado. Agrégalo al producto antes de recibirlo.`);
+      setReceiptError(`El código ${code} no coincide con ningún UPC global, SKU ni código local registrado. Agrégalo al producto antes de recibirlo.`);
       setReceiptCode("");
       receiptInputRef.current?.focus();
       return;
@@ -242,7 +268,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       const existing = current.find((line) =>
         line.productId === product.id
         && line.variantId === variantId
-        && (variantId !== undefined || line.upc === upc),
+        && (variantId !== undefined || line.code.toLowerCase() === needle),
       );
       if (existing) {
         return current.map((line) =>
@@ -253,7 +279,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         id: crypto.randomUUID(),
         productId: product.id,
         variantId,
-        upc,
+        code,
+        matchedBy,
         quantity: 1,
       }];
     });
@@ -783,7 +810,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                   Añadir inventario
                 </h2>
                 <p className="mt-1 text-xs text-north-muted">
-                  Escanea el UPC global. Cada lectura suma una unidad al lote.
+                  Escanea el UPC global o el SKU/código local. Cada lectura suma una unidad al lote.
                 </p>
               </div>
               <button
@@ -800,7 +827,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
             <div className="min-h-0 flex-1 overflow-y-auto p-5">
               <form onSubmit={scanInventoryUpc} className="border border-north-border bg-north-background p-4" data-guide="receipt.scan">
                 <label htmlFor="inventory-upc" className="text-sm font-semibold">
-                  UPC global
+                  UPC global o SKU local
                 </label>
                 <div className="mt-2 flex flex-col gap-2 sm:flex-row">
                   <div className="relative min-w-0 flex-1">
@@ -811,8 +838,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                       value={receiptCode}
                       onChange={(event) => setReceiptCode(event.target.value)}
                       autoComplete="off"
-                      inputMode="numeric"
-                      placeholder="Escanea el código y presiona Enter"
+                      placeholder="Escanea UPC, SKU o código local y presiona Enter"
                       className="h-12 w-full border border-north-border bg-white pl-11 pr-3 font-mono text-base focus-visible:ring-2 focus-visible:ring-north-primary focus-visible:ring-offset-2"
                     />
                   </div>
@@ -846,7 +872,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                   <div className="mt-3 border border-dashed border-north-border px-5 py-10 text-center">
                     <ScanBarcode className="mx-auto h-8 w-8 text-north-steel" />
                     <p className="mt-3 text-sm font-medium">Aún no has escaneado artículos</p>
-                    <p className="mt-1 text-xs text-north-muted">El lector debe enviar Enter después de cada UPC.</p>
+                    <p className="mt-1 text-xs text-north-muted">El lector debe enviar Enter después de cada código.</p>
                   </div>
                 ) : (
                   <div className="mt-3 space-y-2">
@@ -861,7 +887,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                           <div className="min-w-0">
                             <p className="truncate text-sm font-semibold">{product.name}</p>
                             <p className="mt-0.5 truncate font-mono text-xs text-north-muted">
-                              {variant?.sku ?? product.sku} · UPC {line.upc}
+                              {variant?.sku ?? product.sku} · {line.matchedBy} {line.code}
                             </p>
                             {needsVariant ? (
                               <label className="mt-2 block text-xs font-semibold text-amber-800">
