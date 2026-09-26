@@ -3,7 +3,7 @@ import test, { beforeEach } from "node:test";
 import type { CompletedSale } from "@/lib/pos/types";
 import { LEGACY_FINGERPRINT, saleSyncFingerprint } from "@/lib/sync/fingerprint";
 import { getSyncedFingerprints, recordSynced } from "@/lib/sync/kv";
-import { changedSales, markSalesFromServer, pendingSales, syncSales, unsyncedSalesCount } from "@/lib/sync/sync";
+import { changedSales, markSalesFromServer, pendingSales, recordServerBaseline, syncSales, unsyncedSalesCount } from "@/lib/sync/sync";
 
 // Minimal browser globals for the sync module.
 const storage = new Map<string, string>();
@@ -134,4 +134,28 @@ test("markSalesFromServer: merged server sales are not pushed back", async () =>
   assert.equal(unsyncedSalesCount(local), 0);
   await syncSales(local);
   assert.equal(requests.length, 0);
+});
+
+test("recordServerBaseline: already-merged server sales stop being pending, real local changes are still sent", async () => {
+  // Sales merged from the server by an older version: in local state, not in the cursor.
+  const e7 = sale("QA2-B5-E7", { items: [{ lineId: "l1", productId: "p1", sku: "P1", name: "P1", price: 10, quantity: 1.5 }] as unknown as CompletedSale["items"] });
+  const nb1Server = sale("NB-00001", { status: "cancelada", cancelReason: "server" });
+  const mine = sale("mine-legacy");
+  const myCancel = sale("mine-cancelled");
+  storage.set(V1, JSON.stringify(["mine-legacy", "mine-cancelled"]));
+  const local = [e7, sale("NB-00001"), mine, { ...myCancel, status: "cancelada", cancelReason: "cliente" } as CompletedSale];
+  assert.deepEqual(pendingSales(local).map((s) => s.id), ["QA2-B5-E7", "NB-00001"]);
+  // GET /sales returns the server copies.
+  recordServerBaseline([e7, nb1Server, mine, myCancel]);
+  assert.deepEqual(pendingSales(local).map((s) => s.id), []);
+  // e7 and mine match the server; NB-00001 local "completada" differs (the merge
+  // replaces it with the server copy, which then matches); my cancel is a real change.
+  const afterMerge = [e7, nb1Server, mine, local[3]];
+  assert.deepEqual(changedSales(afterMerge).map((s) => s.id), ["mine-cancelled"]);
+  await syncSales(afterMerge);
+  assert.deepEqual(requests.map((q) => q.ids), [["mine-cancelled"]]);
+  // A known (confirmed) fingerprint is not overwritten by the baseline.
+  const confirmed = getSyncedFingerprints().get("mine-cancelled");
+  recordServerBaseline([myCancel]);
+  assert.equal(getSyncedFingerprints().get("mine-cancelled"), confirmed);
 });

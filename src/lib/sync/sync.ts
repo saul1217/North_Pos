@@ -1,6 +1,6 @@
 import type { CompletedSale } from "@/lib/pos/types";
 import { getSyncedFingerprints, recordSynced } from "./kv";
-import { saleSyncFingerprint } from "./fingerprint";
+import { LEGACY_FINGERPRINT, saleSyncFingerprint } from "./fingerprint";
 import { postInChunks } from "./chunks";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { sanitizeReturnsForSync } from "@/lib/pos/quantities";
@@ -57,6 +57,25 @@ export function unsyncedSalesCount(sales: CompletedSale[]): number {
 // server has: record their fingerprint so they are not pushed back.
 export function markSalesFromServer(sales: CompletedSale[]): void {
   recordSynced(sales.map((s) => ({ id: s.id, fingerprint: saleSyncFingerprint(s) })));
+}
+
+// Every sale returned by GET /sales exists on the server. If this till has no
+// confirmed fingerprint for it yet (never recorded, or legacy from v1), take
+// the server's state as the baseline: a local copy identical to the server's
+// is no longer "pending" (e.g. sales merged before this version that the
+// server rejects on resend: 1.5-unit lines, «no puede regresar a un estado
+// anterior»), while a real local change (cancel/return) still differs and is
+// sent. Known fingerprints are left alone.
+export function recordServerBaseline(remoteSales: CompletedSale[]): void {
+  const synced = getSyncedFingerprints();
+  recordSynced(
+    remoteSales
+      .filter((s) => {
+        const known = synced.get(s.id);
+        return known === undefined || known === LEGACY_FINGERPRINT;
+      })
+      .map((s) => ({ id: s.id, fingerprint: saleSyncFingerprint(s) })),
+  );
 }
 
 // Map a POS sale to the backend's /sales/sync shape (extra fields are ignored

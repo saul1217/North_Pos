@@ -68,7 +68,7 @@ import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
 import { MAX_INVENTORY_UNITS } from "@/lib/pos/validation";
 import { wholeUnits } from "@/lib/pos/quantities";
-import { markSalesFromServer } from "@/lib/sync/sync";
+import { markSalesFromServer, recordServerBaseline } from "@/lib/sync/sync";
 
 type PosStore = PosPersistedState & {
   lastCompletedSale: CompletedSale | null;
@@ -520,6 +520,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
     // no reenviarlo (antes, una caja reenviaba ventas de otros cajeros y el
     // backend las rechazaba en cada ronda: «No puedes modificar esta venta»).
     markSalesFromServer(fromServer);
+    // Ventas del servidor sin huella confirmada en esta caja: el estado del
+    // servidor es la referencia (una copia local igual ya no queda pendiente).
+    recordServerBaseline(remoteSales);
     const sales = [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
     if (JSON.stringify(sales) !== JSON.stringify(store.sales)) persist({ sales });
   }, []);
