@@ -27,10 +27,14 @@ export function returnLinesToSubmit(
 export function sanitizeReturnsForSync<R extends { items: { quantity: number }[] }>(
   returns: R[] | undefined,
 ): R[] {
-  return (returns ?? [])
+  if (!Array.isArray(returns)) return [];
+  return returns
+    // Registros mal formados (p. ej. «[[]]» devuelto por GET /sales) no deben
+    // romper toda la sincronización: se descartan.
+    .filter((record) => record && typeof record === "object" && Array.isArray((record as { items?: unknown }).items))
     .map((record) => ({
       ...record,
-      items: record.items.filter((item) => Number(item.quantity) >= 1),
+      items: record.items.filter((item) => item && Number(item.quantity) >= 1),
     }))
     .filter((record) => record.items.length > 0);
 }

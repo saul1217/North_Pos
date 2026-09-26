@@ -55,3 +55,9 @@ test("isWholeQuantity / budgetQuantityError block Taller lines that are not whol
   assert.match(error, /línea 2, 3/);
   assert.ok(budgetQuantityError([]));
 });
+
+test("sanitizeReturnsForSync tolerates malformed return records from the server", () => {
+  const malformed = [[], null, { id: "r0" }, { id: "r1", items: [null, { lineId: "a", quantity: 2 }] }] as unknown as { items: { quantity: number }[] }[];
+  assert.deepEqual(sanitizeReturnsForSync(malformed), [{ id: "r1", items: [{ lineId: "a", quantity: 2 }] }]);
+  assert.deepEqual(sanitizeReturnsForSync("x" as unknown as []), []);
+});
