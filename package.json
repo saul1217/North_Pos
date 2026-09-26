@@ -12,6 +12,7 @@
     "app": "concurrently -k -n vite,electron -c blue,green \"vite\" \"wait-on tcp:127.0.0.1:5180 && electron .\"",
     "build": "vite build",
     "typecheck": "tsc --noEmit",
+    "test": "node scripts/run-tests.mjs",
     "preview": "vite preview",
     "dist": "npm run build && electron-builder",
     "dist:signed": "powershell -ExecutionPolicy Bypass -File scripts/build-signed.ps1",

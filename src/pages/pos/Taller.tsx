@@ -3,7 +3,7 @@
 import { CheckCircle2, LockKeyhole, Plus, Printer, RefreshCw, Wrench } from "lucide-react";
 import { useState } from "react";
 import { usePos } from "@/context/PosContext";
-import { formatPosPrice } from "@/lib/pos/inventory";
+import { formatPosPrice, lookupProductByCode, looksLikeScannedCode, productsForCodeQuery } from "@/lib/pos/inventory";
 import type {
   ChecklistEntry,
   WorkshopBudgetItem,
@@ -281,11 +281,19 @@ export default function PosTallerPage() {
       const product = products.find((candidate) =>
         candidate.name.toLowerCase() === item.description.toLowerCase() ||
         candidate.sku.toLowerCase() === item.description.toLowerCase(),
-      );
+      ) ?? productByScannedCode(item.description);
       return product
         ? { ...item, productId: product.id, productSku: product.sku, description: product.name, price: product.price }
         : item;
     });
+  }
+
+  // SKU escrito/escaneado con el lector en distribución US sobre teclado
+  // LatAm/ES («CSS'001»): exacto y luego corregido (lookupProductByCode).
+  function productByScannedCode(text: string) {
+    if (!looksLikeScannedCode(text)) return undefined;
+    const lookup = lookupProductByCode(products, text);
+    return lookup.status === "found" ? lookup.product : undefined;
   }
 
   function addBudgetLine() {
@@ -318,13 +326,16 @@ export default function PosTallerPage() {
   const availableRefactions = products.filter(
     (product) => product.category.toLowerCase() === "refacciones" && product.status === "activo",
   );
-  const matchingRefactions = availableRefactions.filter((product) => {
+  const textMatchingRefactions = availableRefactions.filter((product) => {
     const query = refactionQuery.trim().toLowerCase();
     if (!query) return true;
     return [product.name, product.sku, product.upc, product.barcode]
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(query));
   });
+  const matchingRefactions = textMatchingRefactions.length > 0
+    ? textMatchingRefactions
+    : productsForCodeQuery(availableRefactions, refactionQuery);
 
   return (
     <>
