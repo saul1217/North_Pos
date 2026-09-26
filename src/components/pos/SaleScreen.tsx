@@ -145,8 +145,8 @@ export function SaleScreen() {
     subtotal,
     total,
     itemCount,
-    addToSale,
     addByBarcode,
+    tryAddToSale,
     removeFromSale,
     setLineQuantity,
     setLineDiscount,
@@ -155,7 +155,8 @@ export function SaleScreen() {
   } = usePos();
 
   const [query, setQuery] = useState("");
-  const [barcodeMsg, setBarcodeMsg] = useState("");
+  const [barcodeMsg, setBarcodeMsg] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
+  const barcodeMsgTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [pickProduct, setPickProduct] = useState<PosProduct | null>(null);
   const [pickProductId, setPickProductId] = useState<string | null>(null);
   const [pickVariant, setPickVariant] = useState<ProductVariant | null>(null);
@@ -169,6 +170,7 @@ export function SaleScreen() {
 
   useEffect(() => () => {
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
+    if (barcodeMsgTimeoutRef.current) clearTimeout(barcodeMsgTimeoutRef.current);
   }, []);
 
   useEffect(() => {
@@ -202,6 +204,19 @@ export function SaleScreen() {
     [currentSale.items, products],
   );
 
+  function showBarcodeMessage(text: string, tone: "ok" | "error") {
+    if (barcodeMsgTimeoutRef.current) clearTimeout(barcodeMsgTimeoutRef.current);
+    setBarcodeMsg({ text, tone });
+    barcodeMsgTimeoutRef.current = setTimeout(() => setBarcodeMsg(null), tone === "error" ? 4000 : 2000);
+  }
+
+  /** Agrega y, si no se pudo, explica por qué (sin stock, tope del carrito…). */
+  function addWithFeedback(product: PosProduct, variant?: ProductVariant, serialNumber?: string) {
+    const attempt = tryAddToSale(product, variant, serialNumber);
+    if (attempt.ok) showCartFeedback(attempt.result);
+    else showBarcodeMessage(attempt.message, "error");
+  }
+
   function showCartFeedback(result: SaleAddResult | null) {
     if (!result) return;
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
@@ -216,7 +231,7 @@ export function SaleScreen() {
       else setPickProduct(product);
       return;
     }
-    showCartFeedback(addToSale(product));
+    addWithFeedback(product);
   }
 
   function chooseVariant(product: PosProduct, variant: ProductVariant) {
@@ -225,7 +240,7 @@ export function SaleScreen() {
       setPickVariant(variant);
       return;
     }
-    showCartFeedback(addToSale(product, variant));
+    addWithFeedback(product, variant);
   }
 
   function handleVariantSelect(variant: ProductVariant) {
@@ -239,7 +254,7 @@ export function SaleScreen() {
     if (!pickVariant || !pickProductId) return;
     const product = products.find((p) => p.id === pickProductId);
     if (!product) return;
-    showCartFeedback(addToSale(product, pickVariant, serial));
+    addWithFeedback(product, pickVariant, serial);
     setPickVariant(null);
     setPickProductId(null);
   }
@@ -255,13 +270,18 @@ export function SaleScreen() {
       setQuery("");
       return;
     }
-    if (outcome.status !== "added") return;
+    if (outcome.status === "failed") {
+      // «No se encontró el código X», «Sin stock: …» o tope de stock en carrito.
+      showBarcodeMessage(outcome.message, "error");
+      setQuery("");
+      barcodeRef.current?.focus();
+      return;
+    }
     const result = outcome.result;
     showCartFeedback(result);
-    setBarcodeMsg(`Agregado: ${result.name}`);
+    showBarcodeMessage(`Agregado: ${result.name}`, "ok");
     setQuery("");
     barcodeRef.current?.focus();
-    setTimeout(() => setBarcodeMsg(""), 2000);
   }
 
   function applyGlobalDiscount(
@@ -300,7 +320,12 @@ export function SaleScreen() {
                 autoComplete="off"
               />
               {barcodeMsg && (
-                <p className="mt-1 text-xs text-north-primary">{barcodeMsg}</p>
+                <p
+                  className={`mt-1 text-xs ${barcodeMsg.tone === "error" ? "font-semibold text-red-700" : "text-north-primary"}`}
+                  role={barcodeMsg.tone === "error" ? "alert" : "status"}
+                >
+                  {barcodeMsg.text}
+                </p>
               )}
             </form>
           </header>

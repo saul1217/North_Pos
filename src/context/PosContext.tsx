@@ -200,10 +200,22 @@ export type SaleAddResult = {
  * Resultado de escanear en Venta. Un producto padre con varias variantes no se
  * agrega directo: la pantalla debe pedir la variante ("needs-variant").
  */
+export type SaleAddFailureReason =
+  | "not-found"
+  | "inactive"
+  | "needs-variant"
+  | "needs-serial"
+  | "out-of-stock"
+  | "stock-limit";
+
+export type SaleAddAttempt =
+  | { ok: true; result: SaleAddResult }
+  | { ok: false; reason: SaleAddFailureReason; message: string };
+
 export type BarcodeAddOutcome =
   | { status: "added"; result: SaleAddResult }
   | { status: "needs-variant"; product: PosProduct }
-  | { status: "failed" };
+  | { status: "failed"; reason: SaleAddFailureReason; message: string };
 
 type PosContextValue = {
   products: PosProduct[];
@@ -229,6 +241,12 @@ type PosContextValue = {
     serialNumber?: string,
   ) => SaleAddResult | null;
   addByBarcode: (code: string) => BarcodeAddOutcome;
+  /** Igual que addToSale, pero indica por qué no se agregó (sin stock, tope, etc.). */
+  tryAddToSale: (
+    product: PosProduct,
+    variant?: ProductVariant,
+    serialNumber?: string,
+  ) => SaleAddAttempt;
   removeFromSale: (lineId: string) => void;
   setLineQuantity: (lineId: string, quantity: number) => boolean;
   setLineDiscount: (lineId: string, discount?: LineDiscount) => void;
@@ -519,26 +537,41 @@ export function PosProvider({ children }: { children: ReactNode }) {
     [snapshot.currentSale.items],
   );
 
-  const addToSale = useCallback(
-    (product: PosProduct, variant?: ProductVariant, serialNumber?: string) => {
-      if (product.status === "inactivo") return null;
+  const tryAddToSale = useCallback(
+    (product: PosProduct, variant?: ProductVariant, serialNumber?: string): SaleAddAttempt => {
+      const displayName = variant ? `${product.name} (${variant.label})` : product.name;
+      if (product.status === "inactivo") {
+        return { ok: false, reason: "inactive", message: `Producto inactivo: ${product.name}` };
+      }
       // Un padre con variantes nunca entra al carrito sin variante: no habría a
       // qué variante descontar existencias.
-      if (requiresVariantChoice(product) && !variant) return null;
+      if (requiresVariantChoice(product) && !variant) {
+        return { ok: false, reason: "needs-variant", message: `Elige la variante de ${product.name}` };
+      }
       const variantId = variant?.id;
       const stock = getAvailableStock(product, variantId);
-      if (stock <= 0) return null;
+      if (stock <= 0) return { ok: false, reason: "out-of-stock", message: `Sin stock: ${displayName}` };
 
-      if (product.requiresSerial && !serialNumber) return null;
+      if (product.requiresSerial && !serialNumber) {
+        return { ok: false, reason: "needs-serial", message: `Elige el número de serie de ${displayName}` };
+      }
 
       const lineId = makeLineId(product.id, variantId, serialNumber);
       const items = [...store.currentSale.items];
-      const existing = items.find((i) => i.lineId === lineId);
+      const existingIndex = items.findIndex((i) => i.lineId === lineId);
+      const existing = existingIndex >= 0 ? items[existingIndex] : undefined;
+      const inCart = items
+        .filter((i) => i.productId === product.id && i.variantId === variantId)
+        .reduce((sum, i) => sum + i.quantity, 0);
 
+      if (existing && product.requiresSerial) {
+        return { ok: false, reason: "stock-limit", message: `La serie ${serialNumber} ya está en el carrito` };
+      }
+      if (inCart >= stock) {
+        return { ok: false, reason: "stock-limit", message: `Ya tienes en el carrito todo el stock disponible de ${displayName}` };
+      }
       if (existing) {
-        if (product.requiresSerial) return null;
-        if (existing.quantity >= stock) return null;
-        existing.quantity += 1;
+        items[existingIndex] = { ...existing, quantity: existing.quantity + 1 };
       } else {
         items.push({
           lineId,
@@ -556,36 +589,56 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
       persist({ currentSale: { ...store.currentSale, items } });
       return {
-        lineId,
-        change: existing ? "incremented" : "added",
-        name: product.name,
-      } satisfies SaleAddResult;
+        ok: true,
+        result: { lineId, change: existing ? "incremented" : "added", name: product.name },
+      };
     },
     [],
   );
 
+  const addToSale = useCallback(
+    (product: PosProduct, variant?: ProductVariant, serialNumber?: string) => {
+      const attempt = tryAddToSale(product, variant, serialNumber);
+      return attempt.ok ? attempt.result : null;
+    },
+    [tryAddToSale],
+  );
+
   const addByBarcode = useCallback((code: string): BarcodeAddOutcome => {
     const found = findByBarcode(store.products, code);
-    if (!found) return { status: "failed" };
+    if (!found) {
+      return { status: "failed", reason: "not-found", message: `No se encontró el código ${code.trim()}` };
+    }
     const { product } = found;
     let variant = found.variant;
     if (!variant && requiresVariantChoice(product)) {
       // Igual que Añadir inventario: con una sola variante se usa esa; con
       // varias, la pantalla pide elegirla.
       if (product.variants.length === 1) variant = product.variants[0];
-      else return { status: "needs-variant", product };
+      else if (product.status !== "inactivo" && product.variants.every((item) => item.stock <= 0)) {
+        return { status: "failed", reason: "out-of-stock", message: `Sin stock: ${product.name}` };
+      } else if (product.status !== "inactivo") return { status: "needs-variant", product };
     }
-    let result: SaleAddResult | null;
-    if (product.requiresSerial && variant) {
-      const serial = product.serialUnits.find(
-        (s) => s.variantId === variant.id && s.status === "disponible",
+    let serialNumber: string | undefined;
+    if (product.requiresSerial && product.status !== "inactivo") {
+      const inCart = new Set(store.currentSale.items.map((item) => item.serialNumber).filter(Boolean));
+      const available = product.serialUnits.filter(
+        (unit) => (unit.variantId ?? undefined) === variant?.id && unit.status === "disponible",
       );
-      result = serial ? addToSale(product, variant, serial.serialNumber) : null;
-    } else {
-      result = addToSale(product, variant);
+      const free = available.find((unit) => !inCart.has(unit.serialNumber));
+      const displayName = variant ? `${product.name} (${variant.label})` : product.name;
+      if (!free) {
+        return available.length > 0
+          ? { status: "failed", reason: "stock-limit", message: `Ya tienes en el carrito todo el stock disponible de ${displayName}` }
+          : { status: "failed", reason: "out-of-stock", message: `Sin stock: ${displayName}` };
+      }
+      serialNumber = free.serialNumber;
     }
-    return result ? { status: "added", result } : { status: "failed" };
-  }, [addToSale]);
+    const attempt = tryAddToSale(product, variant, serialNumber);
+    return attempt.ok
+      ? { status: "added", result: attempt.result }
+      : { status: "failed", reason: attempt.reason, message: attempt.message };
+  }, [tryAddToSale]);
 
   const removeFromSale = useCallback((lineId: string) => {
     persist({
@@ -1292,6 +1345,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       itemCount,
       addToSale,
       addByBarcode,
+      tryAddToSale,
       removeFromSale,
       setLineQuantity,
       setLineDiscount,
@@ -1337,6 +1391,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       itemCount,
       addToSale,
       addByBarcode,
+      tryAddToSale,
       removeFromSale,
       setLineQuantity,
       setLineDiscount,
