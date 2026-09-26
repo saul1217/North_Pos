@@ -284,6 +284,26 @@ const LABEL_PAGE_SIZE_MICRONS = { width: 50800, height: 25400 };
 const LABEL_LOGO_PLACEHOLDER = "__NB_LABEL_LOGO__";
 const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
 
+const NO_PRINTERS_MESSAGE = "No se encontraron impresoras instaladas";
+
+// Traduce los errores de impresión de Chromium/Electron (en inglés) a mensajes claros.
+function labelPrintErrorMessage(reason) {
+  const text = String(reason || "").trim();
+  if (!text || /^failed$/i.test(text)) {
+    return "No se pudieron imprimir las etiquetas. Revisa que la impresora esté encendida y conectada.";
+  }
+  if (/enumerate printers|no printers?|printer.*(not found|unavailable|not available)|invalid printer/i.test(text)) {
+    return NO_PRINTERS_MESSAGE;
+  }
+  if (/page size|pagesize|microns/i.test(text)) {
+    return "La impresora no acepta el tamaño de etiqueta de 50.8 × 25.4 mm. Revisa el tamaño de papel en su configuración.";
+  }
+  if (/printing feature is disabled|print.*disabled/i.test(text)) {
+    return "La impresión no está disponible en este equipo.";
+  }
+  return `No se pudieron imprimir las etiquetas (${text}).`;
+}
+
 ipcMain.handle("pos:printLabels", async (_event, payload) => {
   const html = typeof payload?.html === "string" ? payload.html : "";
   if (!html.trim()) return { ok: false, error: "No hay etiquetas para imprimir" };
@@ -301,6 +321,14 @@ ipcMain.handle("pos:printLabels", async (_event, payload) => {
   });
   try {
     await win.loadFile(tmp);
+    // Sin impresoras instaladas, Chromium responde «Failed to enumerate printers».
+    let printers = [];
+    try {
+      printers = await win.webContents.getPrintersAsync();
+    } catch (err) {
+      console.warn("[printLabels] getPrintersAsync failed:", err instanceof Error ? err.message : err);
+    }
+    if (!Array.isArray(printers) || printers.length === 0) return { ok: false, error: NO_PRINTERS_MESSAGE };
     return await new Promise((resolve) => {
       win.webContents.print({
         silent: false,
@@ -310,11 +338,16 @@ ipcMain.handle("pos:printLabels", async (_event, payload) => {
         pageSize: LABEL_PAGE_SIZE_MICRONS,
       }, (success, failureReason) => {
         if (success) resolve({ ok: true });
-        else resolve({ ok: false, cancelled: failureReason === "cancelled", error: failureReason || "No se pudo imprimir" });
+        else if (failureReason === "cancelled") resolve({ ok: false, cancelled: true });
+        else {
+          console.warn("[printLabels] print failed:", failureReason);
+          resolve({ ok: false, error: labelPrintErrorMessage(failureReason) });
+        }
       });
     });
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+    console.warn("[printLabels] error:", err instanceof Error ? err.message : err);
+    return { ok: false, error: labelPrintErrorMessage(err instanceof Error ? err.message : err) };
   } finally {
     if (!win.isDestroyed()) win.destroy();
     fs.promises.unlink(tmp).catch(() => {});
