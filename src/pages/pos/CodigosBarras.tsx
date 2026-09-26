@@ -2,7 +2,7 @@ import { Printer, RefreshCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import { getCategoryLabel } from "@/lib/pos/inventory";
-import type { BarcodeLabelData } from "@/lib/pos/barcodeLabel";
+import { SKU_LONG_WARNING, barcodeLabelQuality, type BarcodeLabelData } from "@/lib/pos/barcodeLabel";
 import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprintableLabelsMessage } from "@/lib/pos/printBarcodeLabels";
 import { isCode128Encodable } from "@/lib/pos/code128";
 import type { PosProduct } from "@/lib/pos/types";
@@ -72,6 +72,7 @@ export default function PosCodigosBarrasPage() {
     const unique = entries.filter((entry) => (copies[entry.key] ?? 0) > 0).slice(0, 12);
     return unique.length > 0 ? barcodeLabelsPreviewHtml(unique.map(toLabelData), onlyBarcode) : "";
   }, [entries, copies, onlyBarcode]);
+  const longSelected = entries.filter((entry) => (copies[entry.key] ?? 0) > 0 && barcodeLabelQuality(entry.sku) === "long");
   const allVisibleSelected = filtered.length > 0 && filtered.every((entry) => (copies[entry.key] ?? 0) > 0);
 
   async function printSelected() {
@@ -133,6 +134,7 @@ export default function PosCodigosBarrasPage() {
         <div className="mt-4 border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
           El código local se genera con el SKU exacto. Etiqueta de 50.8 × 25.4 mm (2&quot; × 1&quot;): al imprimir, elige la impresora de etiquetas instalada en esta computadora.
         </div>
+        {longSelected.length > 0 && <p className="mt-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">{SKU_LONG_WARNING} Seleccionados: {longSelected.map((entry) => entry.sku.trim()).join(", ")}.</p>}
         {printError && <p className="mt-3 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{printError}</p>}
         <div className="relative mt-4 max-w-md">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-north-steel" />
@@ -160,6 +162,7 @@ export default function PosCodigosBarrasPage() {
                   <td className="px-4 py-3"><p className="font-medium">{entry.name}</p><p className="text-xs text-north-muted">{entry.variantLabel ?? getCategoryLabel(entry.category)}</p></td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.sku}
                     {!isCode128Encodable(entry.sku.trim()) && <span className="mt-1 block font-sans text-[11px] font-semibold text-red-700">SKU no imprimible: tiene Ñ, acentos u otros caracteres no válidos.</span>}
+                    {barcodeLabelQuality(entry.sku) === "long" && <span className="mt-1 block font-sans text-[11px] font-semibold text-amber-700">{SKU_LONG_WARNING}</span>}
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>
