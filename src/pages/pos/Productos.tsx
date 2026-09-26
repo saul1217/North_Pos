@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Check, Eye, Minus, PackagePlus, Pencil, Plus, RefreshCw, ScanBarcode, Search, Trash2, Upload, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
-import { categoryLabels, formatPosPrice, getCategoryLabel } from "@/lib/pos/inventory";
+import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, fetchSkuCategories, uploadProductImage } from "@/lib/catalog/api";
@@ -210,52 +210,26 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       return;
     }
 
-    // Orden de búsqueda: UPC global → SKU local → Code 128 local.
-    // Comparación sin distinguir mayúsculas y sin espacios alrededor.
-    const needle = code.toLowerCase();
-    const same = (value: string | undefined) => (value ?? "").trim().toLowerCase() === needle;
-    const stages: Array<{
-      kind: InventoryReceiptLine["matchedBy"];
-      variantField: (variant: ProductVariant) => string | undefined;
-      productField: (product: PosProduct) => string | undefined;
-    }> = [
-      { kind: "UPC", variantField: (v) => v.upc, productField: (p) => p.upc },
-      { kind: "SKU", variantField: (v) => v.sku, productField: (p) => p.sku },
-      { kind: "Code 128", variantField: (v) => v.barcode, productField: (p) => p.barcode },
-    ];
-
-    let variantMatches: Array<{ product: PosProduct; variant: ProductVariant }> = [];
-    let productMatches: PosProduct[] = [];
-    let matchedBy: InventoryReceiptLine["matchedBy"] = "UPC";
-    for (const stage of stages) {
-      variantMatches = products.flatMap((product) =>
-        product.variants
-          .filter((variant) => same(stage.variantField(variant)))
-          .map((variant) => ({ product, variant })),
-      );
-      productMatches = products.filter((product) => same(stage.productField(product)));
-      if (variantMatches.length > 0 || productMatches.length > 0) {
-        matchedBy = stage.kind;
-        break;
-      }
-    }
-
+    // Misma búsqueda que Venta: UPC global → SKU local → Code 128 local,
+    // sin espacios alrededor ni distinción de mayúsculas.
+    const needle = normalizeCode(code);
+    const lookup = lookupProductByCode(products, code);
+    const matchedBy: InventoryReceiptLine["matchedBy"] = lookup.status === "not-found" ? "UPC" : lookup.matchedBy;
     const kindLabel = matchedBy === "UPC" ? "UPC" : matchedBy === "SKU" ? "SKU" : "código";
-    if (variantMatches.length > 1 || (variantMatches.length === 0 && productMatches.length > 1)) {
+    if (lookup.status === "ambiguous") {
       setReceiptError(`El ${kindLabel} ${code} está asignado a más de un artículo. Corrígelo antes de recibir inventario.`);
       setReceiptCode("");
       receiptInputRef.current?.focus();
       return;
     }
 
-    const variantMatch = variantMatches[0];
-    const product = variantMatch?.product ?? productMatches[0];
-    if (!product) {
+    if (lookup.status === "not-found") {
       setReceiptError(`El código ${code} no coincide con ningún UPC global, SKU ni código local registrado. Agrégalo al producto antes de recibirlo.`);
       setReceiptCode("");
       receiptInputRef.current?.focus();
       return;
     }
+    const { product } = lookup;
     if (product.requiresSerial) {
       setReceiptError(`${product.name} requiere números de serie y no puede recibirse con la entrada rápida.`);
       setReceiptCode("");
@@ -263,7 +237,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       return;
     }
 
-    const variantId = variantMatch?.variant.id
+    const variantId = lookup.variant?.id
       ?? (product.variants.length === 1 ? product.variants[0].id : undefined);
     setReceiptLines((current) => {
       const existing = current.find((line) =>
@@ -502,6 +476,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         return {
           ...cleanVariant,
           label: variant.label.trim(),
+          // Los códigos se guardan sin espacios alrededor (etiqueta, Venta y Recepción coinciden).
+          sku: (variant.sku ?? "").trim(),
+          upc: variant.upc?.trim() || "",
+          barcode: (variant.barcode ?? "").trim(),
           model: variant.model?.trim() || "",
           price: Number(variant.price) || 0,
           stock: Number(variant.stock) || 0,

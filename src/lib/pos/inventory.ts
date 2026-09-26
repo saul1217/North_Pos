@@ -86,22 +86,64 @@ export function makeLineId(
   return [productId, variantId ?? "base", serialNumber ?? ""].join("::");
 }
 
+export type CodeMatchKind = "UPC" | "SKU" | "Code 128";
+
+type CodeMatch = { product: PosProduct; variant?: ProductVariant };
+
+export type CodeLookupResult =
+  | ({ status: "found"; matchedBy: CodeMatchKind } & CodeMatch)
+  | { status: "ambiguous"; matchedBy: CodeMatchKind; matches: CodeMatch[] }
+  | { status: "not-found" };
+
+/** Normaliza un código para comparar: sin espacios alrededor y sin distinguir mayúsculas. */
+export function normalizeCode(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
+
+const CODE_LOOKUP_STAGES: Array<{
+  kind: CodeMatchKind;
+  variantField: (variant: ProductVariant) => string | undefined;
+  productField: (product: PosProduct) => string | undefined;
+}> = [
+  { kind: "UPC", variantField: (variant) => variant.upc, productField: (product) => product.upc },
+  { kind: "SKU", variantField: (variant) => variant.sku, productField: (product) => product.sku },
+  { kind: "Code 128", variantField: (variant) => variant.barcode, productField: (product) => product.barcode },
+];
+
+/**
+ * Búsqueda única por código escaneado (Venta y Recepción de inventario):
+ * UPC global → SKU local → Code 128 local, sin espacios alrededor ni
+ * distinción de mayúsculas. Dentro de cada paso, la variante tiene prioridad.
+ */
+export function lookupProductByCode(products: PosProduct[], code: string): CodeLookupResult {
+  const needle = normalizeCode(code);
+  if (!needle) return { status: "not-found" };
+  for (const stage of CODE_LOOKUP_STAGES) {
+    const variantMatches: CodeMatch[] = products.flatMap((product) =>
+      product.variants
+        .filter((variant) => normalizeCode(stage.variantField(variant)) === needle)
+        .map((variant) => ({ product, variant })),
+    );
+    const productMatches: CodeMatch[] = products
+      .filter((product) => normalizeCode(stage.productField(product)) === needle)
+      .map((product) => ({ product }));
+    if (variantMatches.length === 0 && productMatches.length === 0) continue;
+    if (variantMatches.length > 1 || (variantMatches.length === 0 && productMatches.length > 1)) {
+      return { status: "ambiguous", matchedBy: stage.kind, matches: [...variantMatches, ...productMatches] };
+    }
+    return { status: "found", matchedBy: stage.kind, ...(variantMatches[0] ?? productMatches[0]) };
+  }
+  return { status: "not-found" };
+}
+
 export function findByBarcode(
   products: PosProduct[],
   code: string,
 ): { product: PosProduct; variant?: ProductVariant } | null {
-  const q = code.trim();
-  if (!q) return null;
-
-  for (const product of products) {
-    if (product.barcode === q || product.upc === q) return { product };
-    for (const variant of product.variants) {
-      if (variant.barcode === q || variant.upc === q || variant.sku === q) {
-        return { product, variant };
-      }
-    }
-    if (product.sku === q) return { product };
-  }
+  const result = lookupProductByCode(products, code);
+  if (result.status === "found") return { product: result.product, variant: result.variant };
+  // Venta conserva su comportamiento previo ante duplicados: toma la primera coincidencia.
+  if (result.status === "ambiguous") return result.matches[0] ?? null;
   return null;
 }
 
