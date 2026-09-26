@@ -230,7 +230,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     event.preventDefault();
     const code = receiptCode.trim();
     if (!code) {
-      setReceiptError("Escanea o captura un UPC global o SKU local.");
+      setReceiptError("Escanea o captura un UPC global, SKU o código local (Code 128).");
       receiptInputRef.current?.focus();
       return;
     }
