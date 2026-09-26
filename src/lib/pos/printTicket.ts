@@ -294,13 +294,23 @@ async function sendTicketLines(
   return result ?? { ok: false, deviceName: null, error: "sin-respuesta" };
 }
 
-/** Imprime al cobrar. Si no hay térmica, la venta sigue sin alertas. */
-export async function printSaleTicket(sale: CompletedSale): Promise<PrintResult> {
+/**
+ * Imprime el ticket de una venta. Por defecto es silencioso (impresión
+ * automática al cobrar: si no hay térmica, la venta sigue sin alertas). Los
+ * botones manuales (Imprimir / Reimprimir) pasan `silent: false` para mostrar
+ * el error, igual que Apartados, Cotizaciones y Taller.
+ */
+export async function printSaleTicket(
+  sale: CompletedSale,
+  options: { silent?: boolean } = {},
+): Promise<PrintResult> {
+  const silent = options.silent ?? true;
   try {
-    return await sendTicketLines(saleToTicketLines(sale), { silent: true });
+    return await sendTicketLines(saleToTicketLines(sale), { silent });
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo imprimir";
     console.warn("[printSaleTicket]", err);
+    if (!silent) window.alert(`No se pudo imprimir el ticket: ${message}`);
     return { ok: false, deviceName: null, error: message };
   }
 }
