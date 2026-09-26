@@ -191,7 +191,7 @@ export default function PosCodigosBarrasPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>
-                  <td className="px-4 py-3"><input type="text" inputMode="numeric" pattern="[0-9]*" value={copyDrafts[entry.key] ?? String(count)} onChange={(event) => setEntryCopies(entry, event.target.value)} onBlur={() => commitEntryCopies(entry)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitEntryCopies(entry); } }} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
+                  <td className="px-4 py-3"><input type="text" inputMode="numeric" pattern="[0-9]*" value={copyDrafts[entry.key] ?? String(count)} onChange={(event) => setEntryCopies(entry, event.target.value)} onBlur={() => commitEntryCopies(entry)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); /* Enter = salir del campo: misma normalización que al perder el foco («1.5» → «1»); no imprime. */ event.currentTarget.blur(); } }} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
                 </tr>;
               })}
             </tbody>
