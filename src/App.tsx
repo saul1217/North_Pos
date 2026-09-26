@@ -13,12 +13,14 @@ import Usuarios from "@/pages/pos/Usuarios";
 import Respaldo from "@/pages/pos/Respaldo";
 import CodigosBarras from "@/pages/pos/CodigosBarras";
 import Ayuda from "@/pages/pos/Ayuda";
+import { NoticeHost } from "@/components/NoticeHost";
 
 // Standalone POS app. Routes stay under /pos/* so the sidebar (which links
 // to /pos/venta, /pos/productos, …) works unchanged. Anything else redirects
 // to the sale screen.
 export function App() {
   return (
+    <>
     <HashRouter>
       <Routes>
         <Route path="/pos" element={<PosLayout />}>
@@ -40,5 +42,8 @@ export function App() {
         <Route path="*" element={<Navigate to="/pos/venta" replace />} />
       </Routes>
     </HashRouter>
+    {/* Avisos no bloqueantes (sustituyen a window.alert()). */}
+    <NoticeHost />
+    </>
   );
 }

@@ -1,4 +1,5 @@
 import type { CompletedSale } from "@/lib/pos/types";
+import { showNotice } from "@/lib/pos/notify";
 import {
   formatPosPrice,
   lineTotal,
@@ -269,7 +270,7 @@ async function sendTicketLines(
   const ipcPrint = window.pos?.printTicket;
   if (typeof ipcPrint !== "function") {
     const message = "La impresión térmica solo está disponible en la app de escritorio";
-    if (!options?.silent) window.alert(message);
+    if (!options?.silent) showNotice(message);
     return { ok: false, deviceName: null, error: message };
   }
 
@@ -288,7 +289,7 @@ async function sendTicketLines(
     if (options?.silent) {
       console.warn("[printTicket]", message);
     } else {
-      window.alert(`No se pudo imprimir el ticket: ${message}`);
+      showNotice(`No se pudo imprimir el ticket: ${message}`);
     }
   }
   return result ?? { ok: false, deviceName: null, error: "sin-respuesta" };
@@ -310,7 +311,7 @@ export async function printSaleTicket(
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo imprimir";
     console.warn("[printSaleTicket]", err);
-    if (!silent) window.alert(`No se pudo imprimir el ticket: ${message}`);
+    if (!silent) showNotice(`No se pudo imprimir el ticket: ${message}`);
     return { ok: false, deviceName: null, error: message };
   }
 }
@@ -320,14 +321,14 @@ export async function printTicket(): Promise<PrintResult> {
   const ticket = await findTicketElement();
   if (!ticket) {
     const message = "No hay un ticket visible para imprimir";
-    window.alert(message);
+    showNotice(message);
     return { ok: false, deviceName: null, error: message };
   }
 
   const lines = extractTicketLines(ticket);
   if (lines.length < 2) {
     const message = "El ticket no tiene contenido para imprimir";
-    window.alert(message);
+    showNotice(message);
     return { ok: false, deviceName: null, error: message };
   }
 
@@ -336,7 +337,7 @@ export async function printTicket(): Promise<PrintResult> {
   } catch (err) {
     const message = err instanceof Error ? err.message : "No se pudo imprimir";
     console.error("[printTicket]", err);
-    window.alert(`No se pudo imprimir el ticket: ${message}`);
+    showNotice(`No se pudo imprimir el ticket: ${message}`);
     return { ok: false, deviceName: null, error: message };
   }
 }
