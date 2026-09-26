@@ -31,6 +31,7 @@ const PADDING_MM = 1.2;
 const LOGO_MM = 10;
 const WIDE_LOGO_MM = 8.5;
 const COLUMN_GAP_MM = 0.6;
+const WIDE_GAP_MM = 1;
 const QUIET_MODULES = 10;
 // 0.25 mm = 2 puntos exactos en impresoras de 203 dpi (las más comunes para 2" × 1"),
 // así cada barra conserva su ancho y el código se lee de forma confiable.
@@ -85,12 +86,41 @@ export function barcodeSvg(value: string, moduleMm: number, heightMm: number): s
     + `<g fill="#000">${rects}</g></svg>`;
 }
 
-function labelDescription(label: BarcodeLabelData): string {
-  const parts = [label.name, label.model, label.variantLabel]
+/** Detalle en su propia línea: modelo y variante (sin repetir textos). */
+function labelDetails(label: BarcodeLabelData): string {
+  const name = label.name.trim().toLowerCase();
+  const parts = [label.model, label.variantLabel]
     .map((part) => part?.trim())
-    .filter((part): part is string => Boolean(part));
-  // Evita repetir textos idénticos (p. ej. modelo igual al nombre de la variante).
+    .filter((part): part is string => Boolean(part) && part!.toLowerCase() !== name);
   return parts.filter((part, index) => parts.findIndex((other) => other.toLowerCase() === part.toLowerCase()) === index).join(" · ");
+}
+
+// Anchos de Arial Bold / Helvetica Bold (1/1000 em) para ASCII 0x20–0x7E.
+const ARIAL_BOLD_WIDTHS = [
+  278, 333, 474, 556, 556, 889, 722, 238, 333, 333, 389, 584, 278, 333, 278, 278, 556, 556, 556, 556,
+  556, 556, 556, 556, 556, 556, 333, 333, 584, 584, 584, 611, 975, 722, 722, 722, 722, 667, 611, 778,
+  722, 278, 556, 722, 611, 833, 722, 778, 667, 778, 722, 667, 611, 722, 667, 944, 667, 667, 611, 333,
+  278, 333, 584, 556, 333, 556, 611, 556, 611, 556, 333, 611, 611, 278, 278, 556, 278, 889, 611, 611,
+  611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
+];
+const NUMBER_MAX_PT = 9;
+const NUMBER_MIN_PT = 4;
+const NUMBER_LETTER_SPACING_EM = 0.04;
+const PT_TO_MM = 25.4 / 72;
+
+/**
+ * Tamaño (pt) para que el código legible quepa completo en `availableMm`.
+ * La ventana de impresión no ejecuta JavaScript, así que se calcula aquí con
+ * las métricas de Arial Bold y un margen de seguridad; nunca se trunca el texto.
+ */
+export function numberFontSizePt(code: string, availableMm: number): number {
+  const widthEm = [...code].reduce((sum, character) => {
+    const width = ARIAL_BOLD_WIDTHS[character.charCodeAt(0) - 32] ?? 1000;
+    return sum + width / 1000 + NUMBER_LETTER_SPACING_EM;
+  }, 0);
+  if (widthEm <= 0) return NUMBER_MAX_PT;
+  const fit = (availableMm * 0.94) / (widthEm * PT_TO_MM);
+  return Math.max(NUMBER_MIN_PT, Math.min(NUMBER_MAX_PT, Math.floor(fit * 10) / 10));
 }
 
 function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelOptions>): string {
@@ -108,9 +138,15 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
     return `<section class="label only">${barcodeSvg(label.code, fullWidthModule, 16)}</section>`;
   }
   const logo = `<img class="logo" src="${escapeHtml(options.logoSrc)}" alt="North Bike" />`;
-  const number = `<div class="number">${escapeHtml(label.code)}</div>`;
-  const name = `<div class="name">${escapeHtml(labelDescription(label))}</div>`;
+  const number = (availableMm: number) =>
+    `<div class="number" style="font-size:${numberFontSizePt(label.code, availableMm)}pt">${escapeHtml(label.code)}</div>`;
+  const details = labelDetails(label);
+  // Nombre en 1 línea y modelo/variante en su propia línea, para que la
+  // variante (p. ej. "Talla M") nunca quede oculta por un nombre largo.
+  const name = `<div class="name line">${escapeHtml(label.name.trim())}</div>`
+    + (details ? `<div class="details line">${escapeHtml(details)}</div>` : "");
   const compactWidth = innerWidth - LOGO_MM - COLUMN_GAP_MM;
+  const wideTextWidth = innerWidth - WIDE_LOGO_MM - WIDE_GAP_MM;
   if (modules * PREFERRED_MODULE_MM <= compactWidth) {
     // Diseño principal: logo a la izquierda, barras arriba a la derecha,
     // número debajo y descripción a todo lo ancho.
@@ -119,10 +155,10 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
     ${logo}
     <div class="code">
       ${barcodeSvg(label.code, PREFERRED_MODULE_MM, 9.6)}
-      ${number}
+      ${number(compactWidth)}
     </div>
   </div>
-  ${name}
+  <div class="desc">${name}</div>
 </section>`;
   }
   // SKU largo (p. ej. variantes ACC-0003-V01): las barras usan todo el ancho para
@@ -132,7 +168,7 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
   <div class="bottom">
     ${logo}
     <div class="text">
-      ${number}
+      ${number(wideTextWidth)}
       ${name}
     </div>
   </div>
@@ -177,34 +213,27 @@ export function buildBarcodeLabelsHtml(labels: BarcodeLabelData[], options: Barc
   .bars { display: block; flex: none; }
   .number {
     margin-top: 0.5mm;
-    font-size: 9pt;
-    line-height: 1;
+    font-size: ${NUMBER_MAX_PT}pt;
+    line-height: 1.05;
     font-weight: 700;
-    letter-spacing: 0.04em;
+    letter-spacing: ${NUMBER_LETTER_SPACING_EM}em;
+    white-space: nowrap;
+  }
+  .line {
+    font-size: 6.2pt;
+    line-height: 1.3;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 100%;
-  }
-  .name {
-    font-size: 6.2pt;
-    line-height: 1.3;
-    max-height: 2.6em;
-    /* Oculta acentos de una tercera línea que asoman sobre la segunda. */
-    clip-path: inset(0 0 0.1em 0);
-    overflow: hidden;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    word-break: break-word;
     text-transform: uppercase;
   }
-  .compact .name { margin-top: 0.8mm; }
+  .details { font-weight: 700; }
+  .compact .desc { margin-top: 0.8mm; }
   .wide .code { flex: none; }
-  .wide .bottom { display: flex; align-items: center; gap: 1mm; margin-top: 0.6mm; }
+  .wide .bottom { display: flex; align-items: center; gap: ${WIDE_GAP_MM}mm; margin-top: 0.6mm; }
   .wide .logo { width: ${WIDE_LOGO_MM}mm; height: ${WIDE_LOGO_MM}mm; }
   .wide .text { flex: 1; min-width: 0; }
-  .wide .number { margin-top: 0; margin-bottom: 0.5mm; text-align: left; }
+  .wide .number { margin-top: 0; margin-bottom: 0.4mm; text-align: left; }
   .label.only { justify-content: center; align-items: center; }
   .label.invalid { justify-content: center; align-items: center; text-align: center; gap: 0.6mm; font-size: 6.5pt; border: 0.4mm dashed #000; }
   .label.invalid strong { font-size: 9pt; }
