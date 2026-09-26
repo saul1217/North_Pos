@@ -154,9 +154,6 @@ export default function PosCodigosBarrasPage() {
             </button>
           </div>
         </div>
-        <div className="mt-4 border border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900">
-          El código local se genera con el SKU exacto. Etiqueta de 50.8 × 25.4 mm (2&quot; × 1&quot;): al imprimir, elige la impresora de etiquetas instalada en esta computadora.
-        </div>
         {longSelected.length > 0 && <p className="mt-3 border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900" role="status">{SKU_LONG_WARNING} Seleccionados: {longSelected.map((entry) => entry.sku.trim()).join(", ")}.</p>}
         {printError && <p className="mt-3 border border-red-300 bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">{printError}</p>}
         <div className="relative mt-4 max-w-md">
