@@ -91,7 +91,8 @@ export default function PosCodigosBarrasPage() {
       const result = await printBarcodeLabels(selectedEntries.map(toLabelData), onlyBarcode);
       if (!result.ok && !result.cancelled) setPrintError(result.error ?? "No se pudieron imprimir las etiquetas.");
     } catch (error) {
-      setPrintError((error as Error).message || "No se pudieron imprimir las etiquetas.");
+      console.error("[CodigosBarras] error al imprimir etiquetas:", error);
+      setPrintError("No se pudieron imprimir las etiquetas. Intenta de nuevo; si continúa, reinicia la aplicación.");
     } finally {
       setPrinting(false);
     }

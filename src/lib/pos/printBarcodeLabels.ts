@@ -62,11 +62,24 @@ export async function printBarcodeLabels(labels: BarcodeLabelData[], onlyBarcode
   if (labels.length === 0) return { ok: false, error: "Selecciona al menos una etiqueta" };
   const invalid = unprintableLabels(labels);
   if (invalid.length > 0) return { ok: false, error: unprintableLabelsMessage(invalid) };
+  const iframeHtml = () => buildBarcodeLabelsHtml(labels, { onlyBarcode, logoSrc: absoluteLogoUrl() });
   if (window.pos?.printLabels) {
-    // El proceso principal reemplaza el marcador por la ruta del logo empaquetado.
-    return window.pos.printLabels({ html: buildBarcodeLabelsHtml(labels, { onlyBarcode }) });
+    try {
+      // El proceso principal reemplaza el marcador por la ruta del logo empaquetado.
+      return await window.pos.printLabels({ html: buildBarcodeLabelsHtml(labels, { onlyBarcode }) });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Proceso principal sin el handler (p. ej. renderer actualizado sin reiniciar
+      // Electron): se imprime desde el iframe con el mismo @page de 50.8 × 25.4 mm.
+      if (/no handler registered/i.test(message)) {
+        console.warn("[printBarcodeLabels] pos:printLabels no disponible; se usa impresión desde iframe.", message);
+        return printInIframe(iframeHtml());
+      }
+      console.error("[printBarcodeLabels] error al imprimir:", message);
+      return { ok: false, error: "No se pudieron imprimir las etiquetas. Intenta de nuevo; si continúa, reinicia la aplicación." };
+    }
   }
-  return printInIframe(buildBarcodeLabelsHtml(labels, { onlyBarcode, logoSrc: absoluteLogoUrl() }));
+  return printInIframe(iframeHtml());
 }
 
 /** Vista previa en pantalla con el mismo HTML que se imprime. */
