@@ -132,7 +132,7 @@ export function SyncBar() {
     : !online
       ? "Sin conexión"
       : totalPending > 0
-        ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} pendientes`
+        ? `${totalPending} ${totalPending === 1 ? "elemento pendiente" : "elementos pendientes"}`
         : hasSyncError
           ? "Error de sincronización — reintentar"
           : "Datos sincronizados";
