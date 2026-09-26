@@ -1,5 +1,23 @@
 import { logoSrc } from "@/lib/brand";
 import { buildBarcodeLabelsHtml, type BarcodeLabelData } from "@/lib/pos/barcodeLabel";
+import { isCode128Encodable } from "@/lib/pos/code128";
+
+/** Etiquetas cuyo SKU no puede codificarse (Ñ, acentos…): se imprimirían sin barras. */
+export function unprintableLabels(labels: BarcodeLabelData[]): BarcodeLabelData[] {
+  const seen = new Set<string>();
+  return labels.filter((label) => {
+    const code = label.code.trim();
+    if (isCode128Encodable(code) || seen.has(code)) return false;
+    seen.add(code);
+    return true;
+  });
+}
+
+export function unprintableLabelsMessage(invalid: BarcodeLabelData[]): string {
+  const list = invalid.map((label) => `${label.code.trim() || "(vacío)"} (${label.name})`).join(", ");
+  return `No se imprimió nada: ${invalid.length === 1 ? "este SKU tiene" : "estos SKU tienen"} caracteres que no admite el código de barras (Ñ, acentos u otros): ${list}. `
+    + "Corrige el SKU o quítalo de la selección.";
+}
 
 export type LabelPrintResult = { ok: boolean; cancelled?: boolean; error?: string };
 
@@ -42,6 +60,8 @@ function printInIframe(html: string): Promise<LabelPrintResult> {
 
 export async function printBarcodeLabels(labels: BarcodeLabelData[], onlyBarcode: boolean): Promise<LabelPrintResult> {
   if (labels.length === 0) return { ok: false, error: "Selecciona al menos una etiqueta" };
+  const invalid = unprintableLabels(labels);
+  if (invalid.length > 0) return { ok: false, error: unprintableLabelsMessage(invalid) };
   if (window.pos?.printLabels) {
     // El proceso principal reemplaza el marcador por la ruta del logo empaquetado.
     return window.pos.printLabels({ html: buildBarcodeLabelsHtml(labels, { onlyBarcode }) });

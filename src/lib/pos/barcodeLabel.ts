@@ -79,6 +79,11 @@ function labelDescription(label: BarcodeLabelData): string {
 }
 
 function renderLabel(label: BarcodeLabelData, options: Required<BarcodeLabelOptions>): string {
+  if (!code128Bits(label.code)) {
+    // Nunca devolver una etiqueta en blanco: el SKU no es codificable (Ñ, acentos…).
+    return `<section class="label invalid"><strong>SKU NO IMPRIMIBLE</strong><span>${escapeHtml(label.code)}</span>`
+      + `<span>Usa solo letras sin acento, números y símbolos básicos.</span></section>`;
+  }
   const innerWidth = LABEL_WIDTH_MM - PADDING_MM * 2;
   const modules = barcodeModules(label.code);
   const fullWidthModule = Math.min(PREFERRED_MODULE_MM, innerWidth / Math.max(1, modules));
@@ -184,6 +189,8 @@ export function buildBarcodeLabelsHtml(labels: BarcodeLabelData[], options: Barc
   .wide .text { flex: 1; min-width: 0; }
   .wide .number { margin-top: 0; margin-bottom: 0.5mm; text-align: left; }
   .label.only { justify-content: center; align-items: center; }
+  .label.invalid { justify-content: center; align-items: center; text-align: center; gap: 0.6mm; font-size: 6.5pt; border: 0.4mm dashed #000; }
+  .label.invalid strong { font-size: 9pt; }
   @media screen {
     html, body { width: auto; background: #eef2f4; }
     body { display: flex; flex-wrap: wrap; gap: 3mm; padding: 3mm; }

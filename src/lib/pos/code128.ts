@@ -25,6 +25,11 @@ const CODE128_PATTERNS: number[][] = [
   [2,1,1,2,3,2],[2,3,3,1,1,1,2],
 ];
 
+/** Code 128 solo admite ASCII imprimible (0x20–0x7E): sin Ñ, acentos ni emojis. */
+export function isCode128Encodable(value: string): boolean {
+  return value.length > 0 && /^[\x20-\x7E]+$/.test(value);
+}
+
 function patternBits(pattern: number[]): string {
   let bits = "";
   pattern.forEach((width, index) => {
@@ -34,9 +39,7 @@ function patternBits(pattern: number[]): string {
 }
 
 export function code128Bits(value: string): string {
-  if (!value || [...value].some((character) => character.charCodeAt(0) < 32 || character.charCodeAt(0) > 126)) {
-    return "";
-  }
+  if (!isCode128Encodable(value)) return "";
 
   const values = [...value].map((character) => character.charCodeAt(0) - 32);
   const checksum = (104 + values.reduce((sum, code, index) => sum + code * (index + 1), 0)) % 103;

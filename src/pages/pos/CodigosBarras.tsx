@@ -3,7 +3,8 @@ import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
 import { getCategoryLabel } from "@/lib/pos/inventory";
 import type { BarcodeLabelData } from "@/lib/pos/barcodeLabel";
-import { barcodeLabelsPreviewHtml, printBarcodeLabels } from "@/lib/pos/printBarcodeLabels";
+import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprintableLabelsMessage } from "@/lib/pos/printBarcodeLabels";
+import { isCode128Encodable } from "@/lib/pos/code128";
 import type { PosProduct } from "@/lib/pos/types";
 
 type BarcodeEntry = {
@@ -75,6 +76,11 @@ export default function PosCodigosBarrasPage() {
 
   async function printSelected() {
     if (selectedEntries.length === 0 || printing) return;
+    const invalid = unprintableLabels(selectedEntries.map(toLabelData));
+    if (invalid.length > 0) {
+      setPrintError(unprintableLabelsMessage(invalid));
+      return;
+    }
     setPrinting(true);
     setPrintError(null);
     try {
@@ -152,7 +158,9 @@ export default function PosCodigosBarrasPage() {
                 return <tr key={entry.key} className={`border-b border-north-border ${count > 0 ? "bg-north-primary/5" : ""}`}>
                   <td className="px-4 py-3"><input type="checkbox" checked={count > 0} onChange={() => toggleEntry(entry)} aria-label={`Seleccionar ${entry.name} ${entry.variantLabel ?? ""}`} /></td>
                   <td className="px-4 py-3"><p className="font-medium">{entry.name}</p><p className="text-xs text-north-muted">{entry.variantLabel ?? getCategoryLabel(entry.category)}</p></td>
-                  <td className="px-4 py-3 font-mono text-xs">{entry.sku}</td>
+                  <td className="px-4 py-3 font-mono text-xs">{entry.sku}
+                    {!isCode128Encodable(entry.sku.trim()) && <span className="mt-1 block font-sans text-[11px] font-semibold text-red-700">SKU no imprimible: tiene Ñ, acentos u otros caracteres no válidos.</span>}
+                  </td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>
                   <td className="px-4 py-3"><input type="number" min="0" max="100" value={count} onChange={(event) => setEntryCopies(entry, event.target.value)} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
