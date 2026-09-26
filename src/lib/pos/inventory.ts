@@ -15,6 +15,26 @@ export function getVariant(
   return product.variants.find((v) => v.id === variantId);
 }
 
+/** Producto padre con variantes: nunca se vende sin elegir una variante. */
+export function requiresVariantChoice(product: PosProduct): boolean {
+  return product.hasVariants && product.variants.length > 0;
+}
+
+/** Líneas de venta de productos con variantes a las que les falta la variante. */
+export function saleLinesMissingVariant(items: SaleLineItem[], products: PosProduct[]): SaleLineItem[] {
+  return items.filter((line) => {
+    if (line.variantId) return false;
+    const product = products.find((item) => item.id === line.productId);
+    return Boolean(product && requiresVariantChoice(product));
+  });
+}
+
+export function missingVariantMessage(lines: SaleLineItem[]): string {
+  const names = [...new Set(lines.map((line) => `«${line.name}»`))].join(", ");
+  return `${names} ${lines.length === 1 ? "tiene" : "tienen"} variantes y no se eligió ninguna. `
+    + "Quita esa línea del carrito y vuelve a agregarla eligiendo la variante.";
+}
+
 export function getAvailableStock(
   product: PosProduct,
   variantId?: string,

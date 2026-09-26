@@ -11,6 +11,8 @@ import {
   getStockStatus,
   lineDiscountAmount,
   lineTotal,
+  requiresVariantChoice,
+  saleLinesMissingVariant,
 } from "@/lib/pos/inventory";
 import type { LineDiscount, PosProduct, ProductVariant } from "@/lib/pos/types";
 import { parseGlobalDiscount } from "@/lib/pos/validation";
@@ -195,6 +197,11 @@ export function SaleScreen() {
     );
   }, [products, query]);
 
+  const missingVariantIds = useMemo(
+    () => new Set(saleLinesMissingVariant(currentSale.items, products).map((line) => line.lineId)),
+    [currentSale.items, products],
+  );
+
   function showCartFeedback(result: SaleAddResult | null) {
     if (!result) return;
     if (feedbackTimeoutRef.current) clearTimeout(feedbackTimeoutRef.current);
@@ -203,23 +210,29 @@ export function SaleScreen() {
   }
 
   function handleProductClick(product: PosProduct) {
-    if (product.hasVariants && product.variants.length > 0) {
-      setPickProduct(product);
+    if (requiresVariantChoice(product)) {
+      // Con una sola variante se usa directo; con varias se pide elegir.
+      if (product.variants.length === 1) chooseVariant(product, product.variants[0]);
+      else setPickProduct(product);
       return;
     }
     showCartFeedback(addToSale(product));
   }
 
-  function handleVariantSelect(variant: ProductVariant) {
-    if (!pickProduct) return;
-    if (pickProduct.requiresSerial) {
-      setPickProductId(pickProduct.id);
+  function chooseVariant(product: PosProduct, variant: ProductVariant) {
+    if (product.requiresSerial) {
+      setPickProductId(product.id);
       setPickVariant(variant);
-      setPickProduct(null);
       return;
     }
-    showCartFeedback(addToSale(pickProduct, variant));
+    showCartFeedback(addToSale(product, variant));
+  }
+
+  function handleVariantSelect(variant: ProductVariant) {
+    if (!pickProduct) return;
+    const product = pickProduct;
     setPickProduct(null);
+    chooseVariant(product, variant);
   }
 
   function handleSerialSelect(serial: string) {
@@ -235,8 +248,15 @@ export function SaleScreen() {
     e.preventDefault();
     const code = query.trim();
     if (!code) return;
-    const result = addByBarcode(code);
-    if (!result) return;
+    const outcome = addByBarcode(code);
+    if (outcome.status === "needs-variant") {
+      // Padre con varias variantes: se elige la variante antes de agregarlo.
+      setPickProduct(outcome.product);
+      setQuery("");
+      return;
+    }
+    if (outcome.status !== "added") return;
+    const result = outcome.result;
     showCartFeedback(result);
     setBarcodeMsg(`Agregado: ${result.name}`);
     setQuery("");
@@ -336,6 +356,11 @@ export function SaleScreen() {
                           {item.variantLabel && (
                             <p className="text-xs text-north-steel">
                               {item.variantLabel}
+                            </p>
+                          )}
+                          {missingVariantIds.has(item.lineId) && (
+                            <p className="text-xs font-semibold text-red-700" role="alert">
+                              Sin variante: quita esta línea y vuelve a agregarla eligiendo la variante.
                             </p>
                           )}
                           {item.serialNumber && (
