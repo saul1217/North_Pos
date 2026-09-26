@@ -3,6 +3,7 @@ const { autoUpdater } = require("electron-updater");
 const { spawn, spawnSync } = require("node:child_process");
 const fs = require("node:fs");
 const path = require("node:path");
+const { pathToFileURL } = require("node:url");
 
 const db = require("./db.cjs");
 const { buildEscPos, buildLogoRaster } = require("./escpos.cjs");
@@ -273,6 +274,50 @@ ipcMain.handle("pos:printTicket", async (_event, payload) => {
     return await printEscPosTicket(lines);
   } catch (err) {
     return { ok: false, deviceName: null, error: err instanceof Error ? err.message : String(err) };
+  }
+});
+
+// Etiquetas de código de barras 50.8 × 25.4 mm (2" × 1"). El renderer envía un
+// documento HTML autónomo; se imprime en una ventana oculta y aislada con el
+// tamaño de página exacto en micras y sin márgenes.
+const LABEL_PAGE_SIZE_MICRONS = { width: 50800, height: 25400 };
+const LABEL_LOGO_PLACEHOLDER = "__NB_LABEL_LOGO__";
+const TRANSPARENT_PIXEL = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
+
+ipcMain.handle("pos:printLabels", async (_event, payload) => {
+  const html = typeof payload?.html === "string" ? payload.html : "";
+  if (!html.trim()) return { ok: false, error: "No hay etiquetas para imprimir" };
+
+  const logoPath = resolveTicketLogoPath();
+  const logoUrl = logoPath ? pathToFileURL(logoPath).href : TRANSPARENT_PIXEL;
+  const tmp = path.join(app.getPath("temp"), `northbike-labels-${Date.now()}.html`);
+  fs.writeFileSync(tmp, html.split(LABEL_LOGO_PLACEHOLDER).join(logoUrl), "utf8");
+
+  const win = new BrowserWindow({
+    show: false,
+    width: 400,
+    height: 300,
+    webPreferences: { javascript: false, sandbox: true, contextIsolation: true, nodeIntegration: false },
+  });
+  try {
+    await win.loadFile(tmp);
+    return await new Promise((resolve) => {
+      win.webContents.print({
+        silent: false,
+        printBackground: true,
+        landscape: false,
+        margins: { marginType: "none" },
+        pageSize: LABEL_PAGE_SIZE_MICRONS,
+      }, (success, failureReason) => {
+        if (success) resolve({ ok: true });
+        else resolve({ ok: false, cancelled: failureReason === "cancelled", error: failureReason || "No se pudo imprimir" });
+      });
+    });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : String(err) };
+  } finally {
+    if (!win.isDestroyed()) win.destroy();
+    fs.promises.unlink(tmp).catch(() => {});
   }
 });
 
