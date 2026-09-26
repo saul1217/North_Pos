@@ -7,6 +7,8 @@ import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprin
 import { isCode128Encodable } from "@/lib/pos/code128";
 import type { PosProduct } from "@/lib/pos/types";
 
+const MAX_COPIES = 100;
+
 type BarcodeEntry = {
   key: string;
   productId: string;
@@ -55,6 +57,7 @@ export default function PosCodigosBarrasPage() {
   const { products, catalogLoading, refreshCatalog } = usePos();
   const [query, setQuery] = useState("");
   const [copies, setCopies] = useState<Record<string, number>>({});
+  const [copyDrafts, setCopyDrafts] = useState<Record<string, string>>({});
   const [onlyBarcode, setOnlyBarcode] = useState(false);
   const [printing, setPrinting] = useState(false);
   const [printError, setPrintError] = useState<string | null>(null);
@@ -96,11 +99,29 @@ export default function PosCodigosBarrasPage() {
 
   function toggleEntry(entry: BarcodeEntry) {
     setCopies((current) => ({ ...current, [entry.key]: current[entry.key] ? 0 : 1 }));
+    setCopyDrafts(({ [entry.key]: _removed, ...rest }) => rest);
   }
 
   function setEntryCopies(entry: BarcodeEntry, value: string) {
-    const count = Math.max(0, Math.min(100, Number.parseInt(value, 10) || 0));
-    setCopies((current) => ({ ...current, [entry.key]: count }));
+    // Solo dígitos y sin ceros a la izquierda («-1» → «1», «01» → «1», «0» → vacío).
+    const digits = value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 3);
+    setCopyDrafts((current) => ({ ...current, [entry.key]: digits }));
+    if (digits) {
+      const count = Math.min(MAX_COPIES, Number.parseInt(digits, 10));
+      setCopies((current) => ({ ...current, [entry.key]: count }));
+    }
+  }
+
+  function commitEntryCopies(entry: BarcodeEntry) {
+    const draft = copyDrafts[entry.key];
+    if (draft === undefined) return;
+    setCopyDrafts(({ [entry.key]: _removed, ...rest }) => rest);
+    setCopies((current) => {
+      const previous = current[entry.key] ?? 0;
+      // Vacío al salir: una fila seleccionada queda en 1; una sin seleccionar sigue en 0.
+      const count = draft ? Math.min(MAX_COPIES, Math.max(1, Number.parseInt(draft, 10))) : (previous > 0 ? 1 : 0);
+      return { ...current, [entry.key]: count };
+    });
   }
 
   function toggleVisible() {
@@ -109,6 +130,7 @@ export default function PosCodigosBarrasPage() {
       filtered.forEach((entry) => { next[entry.key] = allVisibleSelected ? 0 : 1; });
       return next;
     });
+    setCopyDrafts({});
   }
 
   return (
@@ -166,7 +188,7 @@ export default function PosCodigosBarrasPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>
-                  <td className="px-4 py-3"><input type="number" min="0" max="100" value={count} onChange={(event) => setEntryCopies(entry, event.target.value)} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
+                  <td className="px-4 py-3"><input type="text" inputMode="numeric" pattern="[0-9]*" value={copyDrafts[entry.key] ?? String(count)} onChange={(event) => setEntryCopies(entry, event.target.value)} onBlur={() => commitEntryCopies(entry)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitEntryCopies(entry); } }} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
                 </tr>;
               })}
             </tbody>
