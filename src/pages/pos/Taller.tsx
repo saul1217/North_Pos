@@ -14,6 +14,7 @@ import { WorkshopReceipt } from "@/components/pos/WorkshopReceipt";
 import { getAuthSession } from "@/lib/auth";
 import { printTicket } from "@/lib/pos/printTicket";
 import { isValidPhone } from "@/lib/pos/validation";
+import { budgetQuantityError, isWholeQuantity } from "@/lib/pos/quantities";
 
 const statusOptions: WorkshopStatus[] = [
   "diagnosticada",
@@ -88,6 +89,7 @@ export default function PosTallerPage() {
   );
   const isClosed = selected?.status === "entregada" || selected?.status === "cancelada";
   const isBudgetLocked = isClosed || selected?.paymentStatus === "pagada";
+  const payQuantityError = selected?.budget ? budgetQuantityError(selected.budget.items) : null;
 
   function handlePhotos(e: React.ChangeEvent<HTMLInputElement>) {
     const files = e.target.files;
@@ -203,11 +205,11 @@ export default function PosTallerPage() {
     if (
       budgetItems.some((item) => {
         if (item.type === "refaccion" && !item.productId) return true;
-        if (!item.description.trim() || !(item.quantity > 0)) return true;
+        if (!item.description.trim() || !isWholeQuantity(item.quantity)) return true;
         return !Number.isFinite(item.price) || item.price < 0;
       })
     ) {
-      setFormError("Cada línea necesita una descripción, cantidad y precio válidos (>= 0).");
+      setFormError("Cada línea necesita una descripción, una cantidad entera de al menos 1 y un precio válido (>= 0).");
       setSavingBudget(false);
       return;
     }
@@ -238,6 +240,12 @@ export default function PosTallerPage() {
 
   async function payOrder() {
     if (!selected || !selected.budget || selected.paymentStatus === "pagada") return;
+    // El cobro crea una venta en el servidor: no enviar líneas con cantidad 0 o fraccionaria.
+    const quantityError = budgetQuantityError(selected.budget.items);
+    if (quantityError) {
+      setFormError(quantityError);
+      return;
+    }
     try {
       const updated = await payWorkshopOrder(selected.id, paymentMethod);
       setSelected(updated);
@@ -618,7 +626,7 @@ export default function PosTallerPage() {
                                 {item.productId ? `${item.description} · ${item.price ? formatPosPrice(item.price) : ""}` : "Buscar refacción registrada..."}
                               </span>
                             </button>
-                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de refacción ${idx + 1}`} />
+                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Math.floor(Number(e.target.value)) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de refacción ${idx + 1}`} />
                             <div className="flex h-9 items-center border border-north-border bg-slate-100 px-2 text-sm text-north-muted" title="Precio tomado del catálogo">
                               {item.productId ? formatPosPrice(item.price) : "Precio del catálogo"}
                             </div>
@@ -627,7 +635,7 @@ export default function PosTallerPage() {
                         ) : (
                           <div className="grid items-center gap-2 md:grid-cols-[minmax(0,1fr)_90px_110px_32px]">
                             <input value={item.description} placeholder="Describe el trabajo manual" disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, description: e.target.value } : b))} className="h-9 min-w-0 border border-north-border bg-white px-2 text-sm" />
-                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Number(e.target.value) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de trabajo ${idx + 1}`} />
+                            <input type="number" min={1} step={1} value={item.quantity || ""} disabled={isBudgetLocked} onChange={(e) => setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, quantity: Math.max(1, Math.floor(Number(e.target.value)) || 1) } : b))} className="h-9 border border-north-border bg-white px-2 text-sm" aria-label={`Cantidad de trabajo ${idx + 1}`} />
                             <input type="number" min={0} step="0.01" value={Number.isFinite(item.price) ? item.price : ""} disabled={isBudgetLocked} onChange={(e) => {
                               const raw = e.target.value;
                               setBudgetItems((prev) => prev.map((b, i) => i === idx ? { ...b, price: raw === "" ? Number.NaN : Number(raw) } : b));
@@ -666,10 +674,15 @@ export default function PosTallerPage() {
                       <option value="tarjeta">Tarjeta</option>
                       <option value="transferencia">Transferencia</option>
                     </select>
+                    {payQuantityError && (
+                      <p role="alert" className="mt-2 text-xs text-red-700">{payQuantityError}</p>
+                    )}
                     <button
                       type="button"
                       onClick={() => void payOrder()}
-                      className="mt-3 h-10 w-full bg-north-primary text-sm font-semibold text-white"
+                      disabled={Boolean(payQuantityError)}
+                      title={payQuantityError ?? undefined}
+                      className="mt-3 h-10 w-full bg-north-primary text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Confirmar pago
                     </button>

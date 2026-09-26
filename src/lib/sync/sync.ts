@@ -1,6 +1,7 @@
 import type { CompletedSale } from "@/lib/pos/types";
 import { addSyncedIds, getSyncedIds } from "./kv";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
+import { sanitizeReturnsForSync } from "@/lib/pos/quantities";
 
 // Backend base URL. Baked at build time; defaults to the local backend for dev.
 // For the packaged app build with: VITE_API_URL=https://<tu-app>.up.railway.app
@@ -56,7 +57,8 @@ function toPayload(sale: CompletedSale) {
     amountReceived: sale.amountReceived,
     change: sale.change,
     cancelReason: sale.cancelReason,
-    returns: sale.returns,
+    // Nunca enviar líneas de devolución con cantidad 0 (el servidor rechaza la venta completa).
+    returns: sanitizeReturnsForSync(sale.returns),
   };
 }
 

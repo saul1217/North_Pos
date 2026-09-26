@@ -11,6 +11,7 @@ import {
 import type { CompletedSale } from "@/lib/pos/types";
 import { TicketReceipt } from "@/components/pos/TicketReceipt";
 import { printSaleTicket } from "@/lib/pos/printTicket";
+import { NO_RETURN_LINES_MESSAGE, returnLinesToSubmit, wholeUnits } from "@/lib/pos/quantities";
 
 export default function PosVentasPage() {
   const { sales, cancelSale, processReturn } = usePos();
@@ -51,11 +52,12 @@ export default function PosVentasPage() {
     setReturnMode(true);
   }
 
+  const canConfirmReturn = returnLinesToSubmit(returnQty).length > 0;
+
   function submitReturn() {
     if (!selected) return;
-    const items = Object.entries(returnQty)
-      .filter(([, q]) => q > 0)
-      .map(([lineId, quantity]) => ({ lineId, quantity }));
+    // Solo líneas con al menos 1 unidad entera; las que quedan en 0 no se envían.
+    const items = returnLinesToSubmit(returnQty);
     if (items.length === 0) return;
     processReturn(selected.id, items, returnReason || "Devolución");
     setReturnMode(false);
@@ -214,11 +216,13 @@ export default function PosVentasPage() {
                         type="number"
                         min={0}
                         max={item.quantity}
+                        step={1}
                         value={returnQty[item.lineId] ?? 0}
                         onChange={(e) =>
                           setReturnQty((prev) => ({
                             ...prev,
-                            [item.lineId]: Number(e.target.value) || 0,
+                            // Solo unidades enteras («1.5» → 1): el servidor rechaza fracciones.
+                            [item.lineId]: Math.min(item.quantity, wholeUnits(e.target.value)),
                           }))
                         }
                         className="h-8 w-16 border border-north-border px-2 text-sm"
@@ -231,11 +235,18 @@ export default function PosVentasPage() {
                     placeholder="Motivo (opcional)"
                     className="h-9 w-full border border-north-border px-2 text-sm"
                   />
+                  {!canConfirmReturn && (
+                    <p role="alert" className="text-xs text-amber-700">
+                      {NO_RETURN_LINES_MESSAGE}
+                    </p>
+                  )}
                   <div className="flex gap-2">
                     <button
                       type="button"
                       onClick={submitReturn}
-                      className="h-9 flex-1 bg-north-primary text-sm text-white"
+                      disabled={!canConfirmReturn}
+                      title={canConfirmReturn ? undefined : NO_RETURN_LINES_MESSAGE}
+                      className="h-9 flex-1 bg-north-primary text-sm text-white disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       Confirmar devolución
                     </button>

@@ -67,6 +67,7 @@ import {
 import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/auth";
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
 import { MAX_INVENTORY_UNITS } from "@/lib/pos/validation";
+import { wholeUnits } from "@/lib/pos/quantities";
 
 type PosStore = PosPersistedState & {
   lastCompletedSale: CompletedSale | null;
@@ -650,7 +651,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
     });
   }, []);
 
-  const setLineQuantity = useCallback((lineId: string, quantity: number) => {
+  const setLineQuantity = useCallback((lineId: string, rawQuantity: number) => {
+    // El carrito solo maneja unidades enteras.
+    const quantity = wholeUnits(rawQuantity);
     const item = store.currentSale.items.find((i) => i.lineId === lineId);
     if (!item) return false;
     const product = store.products.find((p) => p.id === item.productId);
@@ -842,8 +845,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       const returnRecord: SaleReturnRecord = {
         id: crypto.randomUUID(),
         date: new Date().toISOString(),
-        type:
-          returnItems.length === sale.items.length ? "total" : "parcial",
+        type: "parcial",
         reason,
         items: [],
       };
@@ -853,14 +855,17 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
       for (const ri of returnItems) {
         const line = sale.items.find((i) => i.lineId === ri.lineId);
-        if (!line || ri.quantity <= 0) continue;
+        // Devoluciones solo por unidades enteras: una línea que queda en 0
+        // (p. ej. «0.5») se descarta y no se registra ni se sincroniza.
+        const requested = wholeUnits(ri.quantity);
+        if (!line || requested < 1) continue;
 
         const alreadyReturned = sale.returns.reduce((sum, r) => {
           const found = r.items.find((i) => i.lineId === ri.lineId);
           return sum + (found?.quantity ?? 0);
         }, 0);
         const maxReturn = line.quantity - alreadyReturned;
-        const qty = Math.min(ri.quantity, maxReturn);
+        const qty = Math.min(requested, maxReturn);
         if (qty <= 0) continue;
 
         returnRecord.items.push({
@@ -891,6 +896,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       }
 
       if (returnRecord.items.length === 0) return;
+      if (returnRecord.items.length === sale.items.length) returnRecord.type = "total";
 
       const updatedReturns = [...sale.returns, returnRecord];
       const totalReturnedLines = sale.items.every((line) => {
