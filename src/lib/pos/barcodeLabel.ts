@@ -7,6 +7,12 @@ import { code128Bits } from "./code128";
 
 export const LABEL_WIDTH_MM = 50.8;
 export const LABEL_HEIGHT_MM = 25.4;
+/**
+ * Alto de cada etiqueta en el documento: un poco menor que la página para que
+ * el redondeo del controlador (p. ej. ZDesigner a 203 dpi) nunca empuje
+ * contenido a una segunda hoja.
+ */
+export const LABEL_BOX_HEIGHT_MM = 25;
 /** Tamaño de página para webContents.print (micras). */
 export const LABEL_PAGE_SIZE_MICRONS = { width: 50800, height: 25400 } as const;
 /** Marcador que el proceso principal reemplaza por la ruta del logo empaquetado. */
@@ -27,7 +33,13 @@ export type BarcodeLabelOptions = {
   onlyBarcode?: boolean;
 };
 
-const PADDING_MM = 1.2;
+// Margen interior lateral: las Zebra/ZDesigner pueden desplazar la imagen ~2 mm
+// si el ancho o la calibración no coinciden; con 3 mm el texto no se corta.
+const PADDING_X_MM = 3;
+const PADDING_Y_MM = 0.8;
+// Las zonas de silencio del código son blancas: pueden ocupar el margen lateral,
+// pero sin llegar a menos de este borde de la página.
+const EDGE_MM = 0.4;
 const LOGO_MM = 10;
 const WIDE_LOGO_MM = 8.5;
 const COLUMN_GAP_MM = 0.6;
@@ -52,6 +64,18 @@ export function barcodeModules(value: string): number {
   return bits ? bits.length + QUIET_MODULES * 2 : 0;
 }
 
+const INNER_WIDTH_MM = LABEL_WIDTH_MM - PADDING_X_MM * 2;
+const EDGE_WIDTH_MM = LABEL_WIDTH_MM - EDGE_MM * 2;
+
+/**
+ * Módulo máximo (≤ 0.25 mm) con el que las barras caben dentro del margen
+ * interior y las zonas de silencio dentro de la página.
+ */
+function fullWidthModuleMm(modules: number): number {
+  const bars = Math.max(1, modules - QUIET_MODULES * 2);
+  return Math.min(PREFERRED_MODULE_MM, INNER_WIDTH_MM / bars, EDGE_WIDTH_MM / Math.max(1, modules));
+}
+
 export const SKU_LONG_WARNING = "SKU largo: puede no leerse en impresora de 203 dpi, conviene acortarlo.";
 
 export type BarcodeLabelQuality = "ok" | "long" | "invalid";
@@ -64,7 +88,7 @@ export type BarcodeLabelQuality = "ok" | "long" | "invalid";
 export function barcodeLabelQuality(value: string): BarcodeLabelQuality {
   const modules = barcodeModules(value.trim());
   if (modules === 0) return "invalid";
-  return modules * PREFERRED_MODULE_MM <= LABEL_WIDTH_MM - PADDING_MM * 2 ? "ok" : "long";
+  return fullWidthModuleMm(modules) >= PREFERRED_MODULE_MM ? "ok" : "long";
 }
 
 export function barcodeSvg(value: string, moduleMm: number, heightMm: number): string {
@@ -131,11 +155,11 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
     return `<section class="label invalid"><strong>SKU NO IMPRIMIBLE</strong><span>${escapeHtml(label.code)}</span>`
       + `<span>Usa solo letras sin acento, números y símbolos básicos.</span></section>`;
   }
-  const innerWidth = LABEL_WIDTH_MM - PADDING_MM * 2;
+  const innerWidth = INNER_WIDTH_MM;
   const modules = barcodeModules(label.code);
-  const fullWidthModule = Math.min(PREFERRED_MODULE_MM, innerWidth / Math.max(1, modules));
+  const fullWidthModule = fullWidthModuleMm(modules);
   if (options.onlyBarcode) {
-    return `<section class="label only">${barcodeSvg(label.code, fullWidthModule, 16)}</section>`;
+    return `<section class="label only"><div class="bleed">${barcodeSvg(label.code, fullWidthModule, 16)}</div></section>`;
   }
   const logo = `<img class="logo" src="${escapeHtml(options.logoSrc)}" alt="North Bike" />`;
   const number = (availableMm: number) =>
@@ -164,7 +188,7 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
   // SKU largo (p. ej. variantes ACC-0003-V01): las barras usan todo el ancho para
   // no bajar de 0.25 mm por módulo; el logo pasa abajo a la izquierda.
   return `<section class="label wide">
-  <div class="code">${barcodeSvg(label.code, fullWidthModule, 9.2)}</div>
+  <div class="code bleed">${barcodeSvg(label.code, fullWidthModule, 9.2)}</div>
   <div class="bottom">
     ${logo}
     <div class="text">
@@ -192,21 +216,23 @@ export function buildBarcodeLabelsHtml(labels: BarcodeLabelData[], options: Barc
 <style>
   @page { size: ${LABEL_WIDTH_MM}mm ${LABEL_HEIGHT_MM}mm; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: ${LABEL_WIDTH_MM}mm; background: #fff; color: #000; }
+  html, body { margin: 0; padding: 0; width: ${LABEL_WIDTH_MM}mm; background: #fff; color: #000; }
   body { font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .label {
     width: ${LABEL_WIDTH_MM}mm;
-    height: ${LABEL_HEIGHT_MM}mm;
-    padding: ${PADDING_MM}mm;
+    height: ${LABEL_BOX_HEIGHT_MM}mm;
+    padding: ${PADDING_Y_MM}mm ${PADDING_X_MM}mm;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    page-break-after: always;
-    break-after: page;
+    page-break-inside: avoid;
     break-inside: avoid;
   }
-  .label:last-child { page-break-after: auto; break-after: auto; }
+  /* Salto de página solo ENTRE etiquetas: nunca queda una hoja en blanco al final. */
+  .label + .label { page-break-before: always; break-before: page; }
+  /* Barras a lo ancho: las zonas de silencio pueden entrar en el margen lateral. */
+  .bleed { margin: 0 -${(PADDING_X_MM - EDGE_MM).toFixed(1)}mm; display: flex; justify-content: center; }
   .top { display: flex; align-items: center; gap: ${COLUMN_GAP_MM}mm; }
   .logo { width: ${LOGO_MM}mm; height: ${LOGO_MM}mm; object-fit: contain; flex: none; filter: grayscale(1) contrast(1.35); }
   .code { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
