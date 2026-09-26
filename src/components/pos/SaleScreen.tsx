@@ -13,6 +13,7 @@ import {
   lineTotal,
   requiresVariantChoice,
   saleLinesMissingVariant,
+  productsForCodeQuery,
 } from "@/lib/pos/inventory";
 import type { LineDiscount, PosProduct, ProductVariant } from "@/lib/pos/types";
 import { parseGlobalDiscount } from "@/lib/pos/validation";
@@ -181,7 +182,7 @@ export function SaleScreen() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return products.filter((p) => p.status === "activo");
-    return products.filter(
+    const matches = products.filter(
       (p) =>
         p.status === "activo" &&
         (p.name.toLowerCase().includes(q) ||
@@ -197,6 +198,10 @@ export function SaleScreen() {
               v.label.toLowerCase().includes(q),
           )),
     );
+    if (matches.length > 0) return matches;
+    // Un escaneo en este campo con el lector en distribución US sobre teclado
+    // LatAm/ES llega como «CSS'001»: se reintenta como código corregido.
+    return productsForCodeQuery(products, query).filter((p) => p.status === "activo");
   }, [products, query]);
 
   const missingVariantIds = useMemo(

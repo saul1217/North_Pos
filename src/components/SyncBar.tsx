@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { usePos } from "@/context/PosContext";
-import { fetchSales, pendingSales, syncSales } from "@/lib/sync/sync";
+import { fetchSales, syncSales, unsyncedSalesCount } from "@/lib/sync/sync";
 import { getAuthSession } from "@/lib/auth";
 
 // Thin status bar shown on every POS screen. Reads sales via the public usePos
@@ -36,16 +36,20 @@ export function SyncBar() {
   const syncingRef = useRef(false);
   const failureCountRef = useRef(0);
   const firstSyncShownRef = useRef(false);
+  // The current error came from pushing sales (a reject reason), not from a download.
+  const salesErrorRef = useRef(false);
 
   const runSync = useCallback(async (force = false) => {
     if (syncingRef.current) return;
-    const hasPendingWork = pendingSales(salesRef.current).length > 0 ||
+    // New sales and already-synced sales with a pending status change.
+    const hasPendingWork = unsyncedSalesCount(salesRef.current) > 0 ||
       workshopPendingRef.current > 0 ||
       Boolean(catalogErrorRef.current || workshopErrorRef.current);
     if (!force && !hasPendingWork) return;
     syncingRef.current = true;
     setSyncing(true);
     setError(null);
+    salesErrorRef.current = false;
     if (!firstSyncShownRef.current) {
       firstSyncShownRef.current = true;
       setShowStatus(true);
@@ -59,9 +63,11 @@ export function SyncBar() {
       // Surface server reject reasons even when some sales applied (ok:true + error).
       if (res.error) {
         setError(res.error);
+        salesErrorRef.current = true;
         failed = true;
       } else if (!res.ok) {
         failed = true;
+        salesErrorRef.current = true;
         setError("error");
       } else {
         setError(null);
@@ -92,8 +98,16 @@ export function SyncBar() {
 
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
-    setPending(pendingSales(sales).length);
-    const hasPendingWork = pendingSales(sales).length > 0 || workshopSyncPending > 0;
+    const unsynced = unsyncedSalesCount(sales);
+    setPending(unsynced);
+    // A reject reason refers to sales that were pending. If the merge that
+    // follows the push settles them (server copy taken as baseline), nothing is
+    // pending anymore and the old reason must not stay on screen.
+    if (unsynced === 0 && salesErrorRef.current) {
+      salesErrorRef.current = false;
+      setError(null);
+    }
+    const hasPendingWork = unsynced > 0 || workshopSyncPending > 0;
     if (!hasPendingWork) return;
     const t = setTimeout(() => void runSync(), 800);
     return () => clearTimeout(t);
@@ -132,7 +146,7 @@ export function SyncBar() {
     : !online
       ? "Sin conexión"
       : totalPending > 0
-        ? `${totalPending} elemento${totalPending === 1 ? "" : "s"} pendientes`
+        ? `${totalPending} ${totalPending === 1 ? "elemento pendiente" : "elementos pendientes"}`
         : hasSyncError
           ? "Error de sincronización — reintentar"
           : "Datos sincronizados";

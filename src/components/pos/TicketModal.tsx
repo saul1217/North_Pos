@@ -25,7 +25,7 @@ export function TicketModal() {
         <div className="pos-no-print mt-4 grid w-full grid-cols-2 gap-2">
           <button
             type="button"
-            onClick={() => void printSaleTicket(lastCompletedSale)}
+            onClick={() => void printSaleTicket(lastCompletedSale, { silent: false })}
             className="h-11 w-full bg-north-primary text-sm font-semibold text-white hover:bg-north-primary-hover"
           >
             Imprimir

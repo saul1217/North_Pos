@@ -336,6 +336,13 @@ ipcMain.handle("pos:printLabels", async (_event, payload) => {
         landscape: false,
         margins: { marginType: "none" },
         pageSize: LABEL_PAGE_SIZE_MICRONS,
+        // Sin escalar ni agrupar: 1 etiqueta = 1 hoja de 50.8 × 25.4 mm. Las copias
+        // ya vienen repetidas en el HTML (una sección por etiqueta), así que aquí 1.
+        // No se fija dpi: se usa la resolución nativa del controlador (203 dpi en ZD220).
+        scaleFactor: 100,
+        pagesPerSheet: 1,
+        copies: 1,
+        collate: false,
       }, (success, failureReason) => {
         if (success) resolve({ ok: true });
         else if (failureReason === "cancelled") resolve({ ok: false, cancelled: true });

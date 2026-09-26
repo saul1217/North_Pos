@@ -77,9 +77,8 @@ export function ecommerceFieldsOf(product: PosProduct): ProductEcommerceFields {
 }
 
 /**
- * Payload completo de actualización a partir del producto actual. El PATCH del
- * backend reemplaza el producto (UpdateProductDto = CreateProductDto), así que
- * hay que reenviar existencias, ubicación y datos de e-commerce para no perderlos.
+ * Payload completo a partir del producto actual. Sirve como "antes" para
+ * calcular qué cambió (diffProductInput); el PATCH del backend es parcial.
  */
 export function productToInput(product: PosProduct): ProductInput {
   return {
@@ -104,7 +103,25 @@ export function productToInput(product: PosProduct): ProductInput {
   };
 }
 
-function sanitizeProductInput(input: ProductInput): ProductInput {
+/** Cuerpo de PATCH /api/products/:id: solo los campos que cambiaron. */
+export type ProductPatchInput = Partial<ProductInput>;
+
+/**
+ * Campos de `after` que difieren de `before`. Así el PATCH no reenvía datos
+ * viejos (existencias, marca, estado…) que otro equipo pudo haber cambiado.
+ * Los arreglos (variantes, series, imágenes) se envían completos si cambian.
+ */
+export function diffProductInput(before: ProductInput, after: ProductInput): ProductPatchInput {
+  const patch: Record<string, unknown> = {};
+  const previous = before as Record<string, unknown>;
+  for (const [key, value] of Object.entries(after as Record<string, unknown>)) {
+    if (value === undefined) continue;
+    if (JSON.stringify(value) !== JSON.stringify(previous[key])) patch[key] = value;
+  }
+  return patch as ProductPatchInput;
+}
+
+function sanitizeProductInput<T extends ProductPatchInput>(input: T): T {
   return {
     ...input,
     ...(input.variants ? { variants: input.variants.map(toVariantInput) } : {}),
@@ -226,7 +243,7 @@ export function createProduct(input: ProductInput): Promise<PosProduct> {
   });
 }
 
-export function updateProduct(id: string, input: ProductInput): Promise<PosProduct> {
+export function updateProduct(id: string, input: ProductPatchInput): Promise<PosProduct> {
   return request<PosProduct>(`/api/products/${id}`, {
     method: "PATCH",
     body: JSON.stringify(sanitizeProductInput(input)),

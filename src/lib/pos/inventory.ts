@@ -131,11 +131,97 @@ const CODE_LOOKUP_STAGES: Array<{
 ];
 
 /**
+ * Lectores configurados como teclado US en un Windows con distribución
+ * Latinoamericana/Española: el lector envía la tecla US y Windows la traduce
+ * con la distribución local. Mapa carácter recibido → carácter US enviado
+ * (coincide en ambas distribuciones para estas teclas). Letras y dígitos no
+ * cambian. Ej.: «CSS-001» llega como «CSS'001»; «A/M» llega como «A-M».
+ */
+const LATAM_TO_US_SCAN: Record<string, string> = {
+  "'": "-", // tecla -  (US) → '  (LatAm/ES)
+  "?": "_", // Shift+-
+  "-": "/", // tecla /  → -
+  "_": "?", // Shift+/
+  "ñ": ";", // tecla ;  → ñ
+  "Ñ": ":", // Shift+;
+  "¿": "=", // tecla =  → ¿ (LatAm)
+  "¡": "+", // Shift+=  → ¡ (LatAm)
+  "{": "'", // tecla '  → { (LatAm)
+  "[": '"', // Shift+'  → [ (LatAm)
+  "+": "]", // tecla ]  → +
+  "*": "}", // Shift+]  → *
+  "}": "\\", // tecla \  → } (LatAm)
+  "]": "|", // Shift+\ → ] (LatAm)
+  '"': "@", // Shift+2  → "
+  "&": "^", // Shift+6  → &
+  "/": "&", // Shift+7  → /
+  "(": "*", // Shift+8  → (
+  ")": "(", // Shift+9  → )
+  "=": ")", // Shift+0  → =
+};
+
+/**
+ * Candidatos alternativos para un código que no coincidió tal cual, por si
+ * el lector escribió con distribución US sobre teclado LatAm/ES:
+ * 1) inversión completa de la distribución (el lector traduce TODAS las
+ *    teclas, así que la inversión debe ser consistente en todo el código);
+ * 2) solo «'» → «-», el caso más común (SKU tipo «CSS-001»).
+ *
+ * Limitación conocida: la búsqueda exacta va primero, así que si existen dos
+ * códigos que solo difieren en caracteres cruzados (p. ej. «CSS/001» y
+ * «CSS-001»), un escaneo de «CSS/001» con el lector mal configurado llega
+ * como «CSS-001» y encuentra ese otro código válido; no hay forma de
+ * distinguirlos solo con el texto. Los códigos con / ; ' ñ ? ¿ [ ] { } " :
+ * etc. son los expuestos; la solución de fondo es configurar el lector con la
+ * distribución del sistema. La tecla muerta ´ (US «[») no se revierte.
+ */
+export function scannerLayoutCandidates(code: string): string[] {
+  const full = Array.from(code, (char) => LATAM_TO_US_SCAN[char] ?? char).join("");
+  const apostropheOnly = code.replace(/'/g, "-");
+  return [...new Set([full, apostropheOnly])].filter((candidate) => candidate !== code);
+}
+
+/**
+ * ¿El texto de un buscador parece un código escaneado? (sin espacios). Los
+ * buscadores de texto usan esto para reintentar con lookupProductByCode
+ * cuando la búsqueda normal no encuentra nada.
+ */
+export function looksLikeScannedCode(value: string): boolean {
+  const trimmed = value.trim();
+  return trimmed.length >= 3 && !/\s/.test(trimmed);
+}
+
+/**
+ * Productos para un buscador de texto que no encontró nada: si el texto
+ * parece un código, se resuelve con lookupProductByCode (exacto y luego
+ * corregido por distribución de teclado del lector).
+ */
+export function productsForCodeQuery(products: PosProduct[], query: string): PosProduct[] {
+  if (!looksLikeScannedCode(query)) return [];
+  const result = lookupProductByCode(products, query);
+  if (result.status === "found") return [result.product];
+  if (result.status === "ambiguous") return [...new Set(result.matches.map((match) => match.product))];
+  return [];
+}
+
+/**
  * Búsqueda única por código escaneado (Venta y Recepción de inventario):
  * UPC global → SKU local → Code 128 local, sin espacios alrededor ni
  * distinción de mayúsculas. Dentro de cada paso, la variante tiene prioridad.
+ * Si no hay coincidencia exacta, reintenta con la corrección de distribución
+ * de teclado del lector (ver scannerLayoutCandidates).
  */
 export function lookupProductByCode(products: PosProduct[], code: string): CodeLookupResult {
+  const exact = lookupExactCode(products, code);
+  if (exact.status !== "not-found") return exact;
+  for (const candidate of scannerLayoutCandidates((code ?? "").trim())) {
+    const corrected = lookupExactCode(products, candidate);
+    if (corrected.status !== "not-found") return corrected;
+  }
+  return exact;
+}
+
+function lookupExactCode(products: PosProduct[], code: string): CodeLookupResult {
   const needle = normalizeCode(code);
   if (!needle) return { status: "not-found" };
   for (const stage of CODE_LOOKUP_STAGES) {

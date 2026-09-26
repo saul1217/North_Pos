@@ -5,6 +5,7 @@ import { getCategoryLabel } from "@/lib/pos/inventory";
 import { SKU_LONG_WARNING, barcodeLabelQuality, type BarcodeLabelData } from "@/lib/pos/barcodeLabel";
 import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprintableLabelsMessage } from "@/lib/pos/printBarcodeLabels";
 import { isCode128Encodable } from "@/lib/pos/code128";
+import { parseCopiesDraft } from "@/lib/pos/copies";
 import type { PosProduct } from "@/lib/pos/types";
 
 const MAX_COPIES = 100;
@@ -19,6 +20,8 @@ type BarcodeEntry = {
   sku: string;
   upc?: string;
   stock: number;
+  /** Precio de venta: el mismo que cobra el POS (variante ?? producto). */
+  price: number;
 };
 
 function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
@@ -34,6 +37,7 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
         sku: variant.sku,
         upc: variant.upc,
         stock: variant.stock,
+        price: variant.price ?? product.price,
       }));
     }
     return [{
@@ -45,12 +49,13 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
       sku: product.sku,
       upc: product.upc,
       stock: product.stock,
+      price: product.price,
     }];
   }).filter((entry) => entry.sku.trim());
 }
 
 function toLabelData(entry: BarcodeEntry): BarcodeLabelData {
-  return { code: entry.sku.trim(), name: entry.name, model: entry.model, variantLabel: entry.variantLabel };
+  return { code: entry.sku.trim(), name: entry.name, model: entry.model, variantLabel: entry.variantLabel, price: entry.price };
 }
 
 export default function PosCodigosBarrasPage() {
@@ -104,9 +109,12 @@ export default function PosCodigosBarrasPage() {
   }
 
   function setEntryCopies(entry: BarcodeEntry, value: string) {
-    // Solo dígitos y sin ceros a la izquierda («-1» → «1», «01» → «1», «0» → vacío).
-    const digits = value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 3);
-    setCopyDrafts((current) => ({ ...current, [entry.key]: digits }));
+    // Se conserva lo escrito mientras se edita (si «1.5» se mostrara como «1»,
+    // la siguiente tecla «5» formaría «15»); la cantidad usa solo el primer
+    // tramo de dígitos y el campo se normaliza al salir.
+    const raw = value.slice(0, 8);
+    const digits = parseCopiesDraft(raw);
+    setCopyDrafts((current) => ({ ...current, [entry.key]: raw }));
     if (digits) {
       const count = Math.min(MAX_COPIES, Number.parseInt(digits, 10));
       setCopies((current) => ({ ...current, [entry.key]: count }));
@@ -114,8 +122,9 @@ export default function PosCodigosBarrasPage() {
   }
 
   function commitEntryCopies(entry: BarcodeEntry) {
-    const draft = copyDrafts[entry.key];
-    if (draft === undefined) return;
+    const rawDraft = copyDrafts[entry.key];
+    if (rawDraft === undefined) return;
+    const draft = parseCopiesDraft(rawDraft);
     setCopyDrafts(({ [entry.key]: _removed, ...rest }) => rest);
     setCopies((current) => {
       const previous = current[entry.key] ?? 0;
@@ -186,7 +195,7 @@ export default function PosCodigosBarrasPage() {
                   </td>
                   <td className="px-4 py-3 font-mono text-xs">{entry.upc || "—"}</td>
                   <td className="px-4 py-3">{entry.stock}</td>
-                  <td className="px-4 py-3"><input type="text" inputMode="numeric" pattern="[0-9]*" value={copyDrafts[entry.key] ?? String(count)} onChange={(event) => setEntryCopies(entry, event.target.value)} onBlur={() => commitEntryCopies(entry)} onKeyDown={(event) => { if (event.key === "Enter") { event.preventDefault(); commitEntryCopies(entry); } }} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
+                  <td className="px-4 py-3"><input type="text" inputMode="numeric" pattern="[0-9]*" value={copyDrafts[entry.key] ?? String(count)} onChange={(event) => setEntryCopies(entry, event.target.value)} onBlur={() => commitEntryCopies(entry)} onKeyDown={(event) => { if (event.key === "Enter" && !event.nativeEvent.isComposing) { event.preventDefault(); /* Enter = salir del campo: misma normalización que al perder el foco («1.5» → «1»); no imprime. */ event.currentTarget.blur(); } }} aria-label={`Copias de ${entry.name}`} className="h-9 w-20 border border-north-border px-2 text-sm" /></td>
                 </tr>;
               })}
             </tbody>

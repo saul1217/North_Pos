@@ -7,7 +7,7 @@ import { usePos } from "@/context/PosContext";
 import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode, type CodeMatchKind } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
-import { createSkuCategory, ecommerceFieldsOf, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
+import { createSkuCategory, diffProductInput, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
 import { MAX_INVENTORY_UNITS, SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
 import { SKU_LONG_WARNING, barcodeLabelQuality } from "@/lib/pos/barcodeLabel";
@@ -444,10 +444,9 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     setStatusSaving(product.id);
     setProductMessage(null);
     try {
-      // Solo cambia el estado; el resto del payload replica el producto con los
-      // campos que acepta el backend (sin productId/createdAt en variantes).
+      // PATCH parcial: solo el estado, para no pisar existencias, marca u otros
+      // campos que otro equipo haya cambiado desde la última descarga.
       await updateProduct(product.id, {
-        ...productToInput(product),
         status: product.status === "activo" ? "inactivo" : "activo",
       });
       setProductMessage(`${product.name} ahora está ${product.status === "activo" ? "inactivo" : "activo"}.`);
@@ -557,12 +556,12 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
       requiresSerial: formMode === "models" ? false : form.requiresSerial,
       variants: formMode === "models" ? modelVariants : [],
       serialUnits: formMode === "models" ? [] : form.serialUnits.filter((unit) => unit.serialNumber.trim()).map((unit) => toSerialUnitInput({ ...unit, serialNumber: unit.serialNumber.trim() })),
-      // El PATCH reemplaza el producto: conservamos ubicación y datos de e-commerce
-      // que este formulario no edita.
-      ...(editing ? { location: editing.location ?? "", ...ecommerceFieldsOf(editing) } : {}),
       };
-      if (editing) await updateProduct(editing.id, input);
-      else await createProduct(input);
+      if (editing) {
+        // PATCH parcial: solo lo que el usuario cambió en el formulario.
+        const patch = diffProductInput(productToInput(editing), input);
+        if (Object.keys(patch).length > 0) await updateProduct(editing.id, patch);
+      } else await createProduct(input);
       setFormOpen(false);
       setProductMessage(`${editing ? "Producto actualizado" : "Producto creado"} correctamente.`);
     } catch (error) {

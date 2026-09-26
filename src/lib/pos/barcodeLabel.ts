@@ -4,9 +4,16 @@
 // en un iframe oculto. El código de barras es Code 128-B con el mismo valor
 // (SKU local) que se usaba antes, así que los lectores encuentran el mismo artículo.
 import { code128Bits } from "./code128";
+import { formatPosPrice } from "./inventory";
 
 export const LABEL_WIDTH_MM = 50.8;
 export const LABEL_HEIGHT_MM = 25.4;
+/**
+ * Alto de cada etiqueta en el documento: un poco menor que la página para que
+ * el redondeo del controlador (p. ej. ZDesigner a 203 dpi) nunca empuje
+ * contenido a una segunda hoja.
+ */
+export const LABEL_BOX_HEIGHT_MM = 25;
 /** Tamaño de página para webContents.print (micras). */
 export const LABEL_PAGE_SIZE_MICRONS = { width: 50800, height: 25400 } as const;
 /** Marcador que el proceso principal reemplaza por la ruta del logo empaquetado. */
@@ -18,6 +25,8 @@ export type BarcodeLabelData = {
   name: string;
   model?: string;
   variantLabel?: string;
+  /** Precio de venta (el mismo que cobra el POS: variante ?? producto). */
+  price?: number;
 };
 
 export type BarcodeLabelOptions = {
@@ -27,11 +36,17 @@ export type BarcodeLabelOptions = {
   onlyBarcode?: boolean;
 };
 
-const PADDING_MM = 1.2;
-const LOGO_MM = 10;
-const WIDE_LOGO_MM = 8.5;
-const COLUMN_GAP_MM = 0.6;
-const WIDE_GAP_MM = 1;
+// Margen interior lateral: las Zebra/ZDesigner pueden desplazar la imagen ~2 mm
+// si el ancho o la calibración no coinciden; con 3 mm el texto no se corta.
+const PADDING_X_MM = 3;
+const PADDING_Y_MM = 0.8;
+// Las zonas de silencio del código son blancas: pueden ocupar el margen lateral,
+// pero sin llegar a menos de este borde de la página.
+const EDGE_MM = 0.4;
+const LOGO_MM = 6.2;
+const LOGO_GAP_MM = 1;
+const BARS_HEIGHT_MM = 10;
+const META_GAP_MM = 1.5;
 const QUIET_MODULES = 10;
 // 0.25 mm = 2 puntos exactos en impresoras de 203 dpi (las más comunes para 2" × 1"),
 // así cada barra conserva su ancho y el código se lee de forma confiable.
@@ -52,6 +67,18 @@ export function barcodeModules(value: string): number {
   return bits ? bits.length + QUIET_MODULES * 2 : 0;
 }
 
+const INNER_WIDTH_MM = LABEL_WIDTH_MM - PADDING_X_MM * 2;
+const EDGE_WIDTH_MM = LABEL_WIDTH_MM - EDGE_MM * 2;
+
+/**
+ * Módulo máximo (≤ 0.25 mm) con el que las barras caben dentro del margen
+ * interior y las zonas de silencio dentro de la página.
+ */
+function fullWidthModuleMm(modules: number): number {
+  const bars = Math.max(1, modules - QUIET_MODULES * 2);
+  return Math.min(PREFERRED_MODULE_MM, INNER_WIDTH_MM / bars, EDGE_WIDTH_MM / Math.max(1, modules));
+}
+
 export const SKU_LONG_WARNING = "SKU largo: puede no leerse en impresora de 203 dpi, conviene acortarlo.";
 
 export type BarcodeLabelQuality = "ok" | "long" | "invalid";
@@ -64,7 +91,7 @@ export type BarcodeLabelQuality = "ok" | "long" | "invalid";
 export function barcodeLabelQuality(value: string): BarcodeLabelQuality {
   const modules = barcodeModules(value.trim());
   if (modules === 0) return "invalid";
-  return modules * PREFERRED_MODULE_MM <= LABEL_WIDTH_MM - PADDING_MM * 2 ? "ok" : "long";
+  return fullWidthModuleMm(modules) >= PREFERRED_MODULE_MM ? "ok" : "long";
 }
 
 export function barcodeSvg(value: string, moduleMm: number, heightMm: number): string {
@@ -104,7 +131,10 @@ const ARIAL_BOLD_WIDTHS = [
   611, 611, 389, 556, 333, 611, 556, 778, 556, 556, 500, 389, 280, 389, 584,
 ];
 const NUMBER_MAX_PT = 9;
+const SKU_MAX_PT = 8.5;
 const NUMBER_MIN_PT = 4;
+const PRICE_MAX_PT = 10.5;
+const PRICE_MIN_PT = 8;
 const NUMBER_LETTER_SPACING_EM = 0.04;
 const PT_TO_MM = 25.4 / 72;
 
@@ -113,14 +143,39 @@ const PT_TO_MM = 25.4 / 72;
  * La ventana de impresión no ejecuta JavaScript, así que se calcula aquí con
  * las métricas de Arial Bold y un margen de seguridad; nunca se trunca el texto.
  */
-export function numberFontSizePt(code: string, availableMm: number): number {
-  const widthEm = [...code].reduce((sum, character) => {
+function boldWidthEm(text: string, letterSpacingEm: number): number {
+  return [...text].reduce((sum, character) => {
     const width = ARIAL_BOLD_WIDTHS[character.charCodeAt(0) - 32] ?? 1000;
-    return sum + width / 1000 + NUMBER_LETTER_SPACING_EM;
+    return sum + width / 1000 + letterSpacingEm;
   }, 0);
-  if (widthEm <= 0) return NUMBER_MAX_PT;
+}
+
+export function numberFontSizePt(code: string, availableMm: number, maxPt = NUMBER_MAX_PT): number {
+  const widthEm = boldWidthEm(code, NUMBER_LETTER_SPACING_EM);
+  if (widthEm <= 0) return maxPt;
   const fit = (availableMm * 0.94) / (widthEm * PT_TO_MM);
-  return Math.max(NUMBER_MIN_PT, Math.min(NUMBER_MAX_PT, Math.floor(fit * 10) / 10));
+  return Math.max(NUMBER_MIN_PT, Math.min(maxPt, Math.floor(fit * 10) / 10));
+}
+
+/**
+ * Precio como en el resto del POS (MXN sin decimales, «$1,250»). Si el precio
+ * tiene centavos se muestran («$1,899.50») para no imprimir un monto redondeado
+ * distinto del que se cobra. Vacío si no hay precio válido.
+ */
+export function formatLabelPrice(price: number | undefined): string {
+  if (typeof price !== "number" || !Number.isFinite(price) || price <= 0) return "";
+  const cents = Math.round(price * 100);
+  if (cents % 100 === 0) return formatPosPrice(cents / 100);
+  return new Intl.NumberFormat("es-MX", { style: "currency", currency: "MXN", minimumFractionDigits: 2, maximumFractionDigits: 2 })
+    .format(cents / 100);
+}
+
+/** Precio en negritas de 8–10.5 pt, sin ocupar más de la mitad del ancho útil. */
+function priceFontSizePt(text: string, availableMm: number): number {
+  const widthEm = boldWidthEm(text, 0);
+  if (widthEm <= 0) return PRICE_MAX_PT;
+  const fit = (availableMm * 0.94) / (widthEm * PT_TO_MM);
+  return Math.max(PRICE_MIN_PT, Math.min(PRICE_MAX_PT, Math.floor(fit * 10) / 10));
 }
 
 function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelOptions>): string {
@@ -131,45 +186,32 @@ function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelO
     return `<section class="label invalid"><strong>SKU NO IMPRIMIBLE</strong><span>${escapeHtml(label.code)}</span>`
       + `<span>Usa solo letras sin acento, números y símbolos básicos.</span></section>`;
   }
-  const innerWidth = LABEL_WIDTH_MM - PADDING_MM * 2;
+  const innerWidth = INNER_WIDTH_MM;
   const modules = barcodeModules(label.code);
-  const fullWidthModule = Math.min(PREFERRED_MODULE_MM, innerWidth / Math.max(1, modules));
+  const fullWidthModule = fullWidthModuleMm(modules);
   if (options.onlyBarcode) {
-    return `<section class="label only">${barcodeSvg(label.code, fullWidthModule, 16)}</section>`;
+    return `<section class="label only"><div class="bleed">${barcodeSvg(label.code, fullWidthModule, 16)}</div></section>`;
   }
   const logo = `<img class="logo" src="${escapeHtml(options.logoSrc)}" alt="North Bike" />`;
-  const number = (availableMm: number) =>
-    `<div class="number" style="font-size:${numberFontSizePt(label.code, availableMm)}pt">${escapeHtml(label.code)}</div>`;
+  const price = formatLabelPrice(label.price);
+  const pricePt = price ? priceFontSizePt(price, innerWidth / 2) : 0;
+  const priceWidthMm = price ? boldWidthEm(price, 0) * pricePt * PT_TO_MM : 0;
+  const skuWidthMm = innerWidth - (price ? priceWidthMm + META_GAP_MM : 0);
   const details = labelDetails(label);
-  // Nombre en 1 línea y modelo/variante en su propia línea, para que la
-  // variante (p. ej. "Talla M") nunca quede oculta por un nombre largo.
-  const name = `<div class="name line">${escapeHtml(label.name.trim())}</div>`
-    + (details ? `<div class="details line">${escapeHtml(details)}</div>` : "");
-  const compactWidth = innerWidth - LOGO_MM - COLUMN_GAP_MM;
-  const wideTextWidth = innerWidth - WIDE_LOGO_MM - WIDE_GAP_MM;
-  if (modules * PREFERRED_MODULE_MM <= compactWidth) {
-    // Diseño principal: logo a la izquierda, barras arriba a la derecha,
-    // número debajo y descripción a todo lo ancho.
-    return `<section class="label compact">
-  <div class="top">
-    ${logo}
-    <div class="code">
-      ${barcodeSvg(label.code, PREFERRED_MODULE_MM, 9.6)}
-      ${number(compactWidth)}
-    </div>
+  // Barras arriba a lo ancho (módulo de 0.25 mm, zonas de silencio completas);
+  // SKU a la izquierda y precio a la derecha en una línea; nombre en 1 línea y
+  // modelo/variante en otra, para que la variante nunca quede oculta.
+  return `<section class="label">
+  <div class="code bleed">${barcodeSvg(label.code, fullWidthModule, BARS_HEIGHT_MM)}</div>
+  <div class="meta">
+    <div class="number" style="font-size:${numberFontSizePt(label.code, skuWidthMm, SKU_MAX_PT)}pt">${escapeHtml(label.code)}</div>
+    ${price ? `<div class="price" style="font-size:${pricePt}pt">${escapeHtml(price)}</div>` : ""}
   </div>
-  <div class="desc">${name}</div>
-</section>`;
-  }
-  // SKU largo (p. ej. variantes ACC-0003-V01): las barras usan todo el ancho para
-  // no bajar de 0.25 mm por módulo; el logo pasa abajo a la izquierda.
-  return `<section class="label wide">
-  <div class="code">${barcodeSvg(label.code, fullWidthModule, 9.2)}</div>
   <div class="bottom">
     ${logo}
     <div class="text">
-      ${number(wideTextWidth)}
-      ${name}
+      <div class="name line">${escapeHtml(label.name.trim())}</div>
+      ${details ? `<div class="details line">${escapeHtml(details)}</div>` : ""}
     </div>
   </div>
 </section>`;
@@ -192,48 +234,46 @@ export function buildBarcodeLabelsHtml(labels: BarcodeLabelData[], options: Barc
 <style>
   @page { size: ${LABEL_WIDTH_MM}mm ${LABEL_HEIGHT_MM}mm; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body { width: ${LABEL_WIDTH_MM}mm; background: #fff; color: #000; }
+  html, body { margin: 0; padding: 0; width: ${LABEL_WIDTH_MM}mm; background: #fff; color: #000; }
   body { font-family: Arial, "Helvetica Neue", Helvetica, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .label {
     width: ${LABEL_WIDTH_MM}mm;
-    height: ${LABEL_HEIGHT_MM}mm;
-    padding: ${PADDING_MM}mm;
+    height: ${LABEL_BOX_HEIGHT_MM}mm;
+    padding: ${PADDING_Y_MM}mm ${PADDING_X_MM}mm;
     overflow: hidden;
     display: flex;
     flex-direction: column;
     justify-content: center;
-    page-break-after: always;
-    break-after: page;
+    page-break-inside: avoid;
     break-inside: avoid;
   }
-  .label:last-child { page-break-after: auto; break-after: auto; }
-  .top { display: flex; align-items: center; gap: ${COLUMN_GAP_MM}mm; }
-  .logo { width: ${LOGO_MM}mm; height: ${LOGO_MM}mm; object-fit: contain; flex: none; filter: grayscale(1) contrast(1.35); }
-  .code { flex: 1; min-width: 0; display: flex; flex-direction: column; align-items: center; }
+  /* Salto de página solo ENTRE etiquetas: nunca queda una hoja en blanco al final. */
+  .label + .label { page-break-before: always; break-before: page; }
+  /* Barras a lo ancho: las zonas de silencio pueden entrar en el margen lateral. */
+  .bleed { margin: 0 -${(PADDING_X_MM - EDGE_MM).toFixed(1)}mm; display: flex; justify-content: center; }
+  .code { display: flex; flex-direction: column; align-items: center; flex: none; }
   .bars { display: block; flex: none; }
+  .meta { display: flex; align-items: baseline; justify-content: space-between; gap: ${META_GAP_MM}mm; margin-top: 0.4mm; }
   .number {
-    margin-top: 0.5mm;
-    font-size: ${NUMBER_MAX_PT}pt;
-    line-height: 1.05;
+    font-size: ${SKU_MAX_PT}pt;
+    line-height: 1.1;
     font-weight: 700;
     letter-spacing: ${NUMBER_LETTER_SPACING_EM}em;
     white-space: nowrap;
   }
+  .price { flex: none; font-size: ${PRICE_MAX_PT}pt; line-height: 1.1; font-weight: 700; white-space: nowrap; }
+  .bottom { display: flex; align-items: center; gap: ${LOGO_GAP_MM}mm; margin-top: 0.3mm; min-width: 0; }
+  .logo { width: ${LOGO_MM}mm; height: ${LOGO_MM}mm; object-fit: contain; flex: none; filter: grayscale(1) contrast(1.35); }
+  .text { flex: 1; min-width: 0; }
   .line {
-    font-size: 6.2pt;
-    line-height: 1.3;
+    line-height: 1.25;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     text-transform: uppercase;
   }
-  .details { font-weight: 700; }
-  .compact .desc { margin-top: 0.8mm; }
-  .wide .code { flex: none; }
-  .wide .bottom { display: flex; align-items: center; gap: ${WIDE_GAP_MM}mm; margin-top: 0.6mm; }
-  .wide .logo { width: ${WIDE_LOGO_MM}mm; height: ${WIDE_LOGO_MM}mm; }
-  .wide .text { flex: 1; min-width: 0; }
-  .wide .number { margin-top: 0; margin-bottom: 0.4mm; text-align: left; }
+  .name { font-size: 6.5pt; }
+  .details { font-size: 5.6pt; font-weight: 700; }
   .label.only { justify-content: center; align-items: center; }
   .label.invalid { justify-content: center; align-items: center; text-align: center; gap: 0.6mm; font-size: 6.5pt; border: 0.4mm dashed #000; }
   .label.invalid strong { font-size: 9pt; }
