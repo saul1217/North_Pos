@@ -10,6 +10,7 @@ import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, fetchSkuCategories, uploadProductImage } from "@/lib/catalog/api";
 import { getAuthSession } from "@/lib/auth";
 import { SKU_CHARSET_ERROR, invalidSkuCharacters } from "@/lib/pos/validation";
+import { SKU_LONG_WARNING, barcodeLabelQuality } from "@/lib/pos/barcodeLabel";
 
 type ProductForm = {
   sku: string;
@@ -994,6 +995,8 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                   {editing ? form.sku : skuPreview}
                 </div>
                 <span className="mt-1 block text-xs font-normal text-north-muted">{editing ? "Identificador interno estable; no se puede modificar." : "El consecutivo definitivo se asigna al guardar en el catálogo central."}</span>
+                {editing && invalidSkuCharacters(form.sku.trim()).length > 0 && <span className="mt-1 block text-xs font-semibold text-red-700">{SKU_CHARSET_ERROR}</span>}
+                {editing && barcodeLabelQuality(form.sku) === "long" && <span className="mt-1 block text-xs font-semibold text-amber-700">{SKU_LONG_WARNING}</span>}
               </div>}
               <label className="text-sm font-medium">Categoría
                 <select value={form.category} onChange={(e) => setForm({ ...form, category: e.target.value as ProductForm["category"] })} className="mt-1 h-10 w-full border border-north-border bg-white px-3 font-normal">{categoryOptions.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>
@@ -1059,6 +1062,9 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
                         <div>
                           <p className="text-sm font-semibold">Modelo {index + 1}</p>
                           <p className="text-xs text-north-muted">Define su precio, existencia y stock mínimo.</p>
+                          {variant.sku?.trim() && <p className="mt-0.5 font-mono text-xs text-north-steel">SKU: {variant.sku.trim()}</p>}
+                          {variant.sku?.trim() && invalidSkuCharacters(variant.sku.trim()).length > 0 && <p className="text-xs font-semibold text-red-700">{SKU_CHARSET_ERROR}</p>}
+                          {variant.sku?.trim() && barcodeLabelQuality(variant.sku) === "long" && <p className="text-xs font-semibold text-amber-700">{SKU_LONG_WARNING}</p>}
                         </div>
                         <button
                           type="button"

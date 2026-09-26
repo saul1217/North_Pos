@@ -51,6 +51,21 @@ export function barcodeModules(value: string): number {
   return bits ? bits.length + QUIET_MODULES * 2 : 0;
 }
 
+export const SKU_LONG_WARNING = "SKU largo: puede no leerse en impresora de 203 dpi, conviene acortarlo.";
+
+export type BarcodeLabelQuality = "ok" | "long" | "invalid";
+
+/**
+ * "long" cuando ni a todo lo ancho de la etiqueta cabe un módulo de 0.25 mm
+ * (≈ más de 12 caracteres sin tramos numéricos): las barras salen con anchos
+ * irregulares a 203 dpi. "invalid" cuando el SKU no puede codificarse.
+ */
+export function barcodeLabelQuality(value: string): BarcodeLabelQuality {
+  const modules = barcodeModules(value.trim());
+  if (modules === 0) return "invalid";
+  return modules * PREFERRED_MODULE_MM <= LABEL_WIDTH_MM - PADDING_MM * 2 ? "ok" : "long";
+}
+
 export function barcodeSvg(value: string, moduleMm: number, heightMm: number): string {
   const bits = code128Bits(value);
   if (!bits) return "";
