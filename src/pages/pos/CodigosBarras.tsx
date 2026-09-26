@@ -5,6 +5,7 @@ import { getCategoryLabel } from "@/lib/pos/inventory";
 import { SKU_LONG_WARNING, barcodeLabelQuality, type BarcodeLabelData } from "@/lib/pos/barcodeLabel";
 import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprintableLabelsMessage } from "@/lib/pos/printBarcodeLabels";
 import { isCode128Encodable } from "@/lib/pos/code128";
+import { parseCopiesDraft } from "@/lib/pos/copies";
 import type { PosProduct } from "@/lib/pos/types";
 
 const MAX_COPIES = 100;
@@ -104,9 +105,12 @@ export default function PosCodigosBarrasPage() {
   }
 
   function setEntryCopies(entry: BarcodeEntry, value: string) {
-    // Solo dígitos y sin ceros a la izquierda («-1» → «1», «01» → «1», «0» → vacío).
-    const digits = value.replace(/\D/g, "").replace(/^0+/, "").slice(0, 3);
-    setCopyDrafts((current) => ({ ...current, [entry.key]: digits }));
+    // Se conserva lo escrito mientras se edita (si «1.5» se mostrara como «1»,
+    // la siguiente tecla «5» formaría «15»); la cantidad usa solo el primer
+    // tramo de dígitos y el campo se normaliza al salir.
+    const raw = value.slice(0, 8);
+    const digits = parseCopiesDraft(raw);
+    setCopyDrafts((current) => ({ ...current, [entry.key]: raw }));
     if (digits) {
       const count = Math.min(MAX_COPIES, Number.parseInt(digits, 10));
       setCopies((current) => ({ ...current, [entry.key]: count }));
@@ -114,8 +118,9 @@ export default function PosCodigosBarrasPage() {
   }
 
   function commitEntryCopies(entry: BarcodeEntry) {
-    const draft = copyDrafts[entry.key];
-    if (draft === undefined) return;
+    const rawDraft = copyDrafts[entry.key];
+    if (rawDraft === undefined) return;
+    const draft = parseCopiesDraft(rawDraft);
     setCopyDrafts(({ [entry.key]: _removed, ...rest }) => rest);
     setCopies((current) => {
       const previous = current[entry.key] ?? 0;
