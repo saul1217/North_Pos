@@ -78,7 +78,9 @@ function labelDescription(label: BarcodeLabelData): string {
   return parts.filter((part, index) => parts.findIndex((other) => other.toLowerCase() === part.toLowerCase()) === index).join(" · ");
 }
 
-function renderLabel(label: BarcodeLabelData, options: Required<BarcodeLabelOptions>): string {
+function renderLabel(rawLabel: BarcodeLabelData, options: Required<BarcodeLabelOptions>): string {
+  // Barras y texto usan exactamente el mismo valor, sin espacios alrededor.
+  const label = { ...rawLabel, code: rawLabel.code.trim() };
   if (!code128Bits(label.code)) {
     // Nunca devolver una etiqueta en blanco: el SKU no es codificable (Ñ, acentos…).
     return `<section class="label invalid"><strong>SKU NO IMPRIMIBLE</strong><span>${escapeHtml(label.code)}</span>`

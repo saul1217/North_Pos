@@ -48,7 +48,7 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
 }
 
 function toLabelData(entry: BarcodeEntry): BarcodeLabelData {
-  return { code: entry.sku, name: entry.name, model: entry.model, variantLabel: entry.variantLabel };
+  return { code: entry.sku.trim(), name: entry.name, model: entry.model, variantLabel: entry.variantLabel };
 }
 
 export default function PosCodigosBarrasPage() {
