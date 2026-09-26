@@ -20,6 +20,8 @@ type BarcodeEntry = {
   sku: string;
   upc?: string;
   stock: number;
+  /** Precio de venta: el mismo que cobra el POS (variante ?? producto). */
+  price: number;
 };
 
 function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
@@ -35,6 +37,7 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
         sku: variant.sku,
         upc: variant.upc,
         stock: variant.stock,
+        price: variant.price ?? product.price,
       }));
     }
     return [{
@@ -46,12 +49,13 @@ function getBarcodeEntries(products: PosProduct[]): BarcodeEntry[] {
       sku: product.sku,
       upc: product.upc,
       stock: product.stock,
+      price: product.price,
     }];
   }).filter((entry) => entry.sku.trim());
 }
 
 function toLabelData(entry: BarcodeEntry): BarcodeLabelData {
-  return { code: entry.sku.trim(), name: entry.name, model: entry.model, variantLabel: entry.variantLabel };
+  return { code: entry.sku.trim(), name: entry.name, model: entry.model, variantLabel: entry.variantLabel, price: entry.price };
 }
 
 export default function PosCodigosBarrasPage() {
