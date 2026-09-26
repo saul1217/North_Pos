@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Check, Cloud, CloudOff, RefreshCw } from "lucide-react";
 import { usePos } from "@/context/PosContext";
-import { fetchSales, pendingSales, syncSales } from "@/lib/sync/sync";
+import { fetchSales, syncSales, unsyncedSalesCount } from "@/lib/sync/sync";
 import { getAuthSession } from "@/lib/auth";
 
 // Thin status bar shown on every POS screen. Reads sales via the public usePos
@@ -39,7 +39,8 @@ export function SyncBar() {
 
   const runSync = useCallback(async (force = false) => {
     if (syncingRef.current) return;
-    const hasPendingWork = pendingSales(salesRef.current).length > 0 ||
+    // New sales and already-synced sales with a pending status change.
+    const hasPendingWork = unsyncedSalesCount(salesRef.current) > 0 ||
       workshopPendingRef.current > 0 ||
       Boolean(catalogErrorRef.current || workshopErrorRef.current);
     if (!force && !hasPendingWork) return;
@@ -92,8 +93,9 @@ export function SyncBar() {
 
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
-    setPending(pendingSales(sales).length);
-    const hasPendingWork = pendingSales(sales).length > 0 || workshopSyncPending > 0;
+    const unsynced = unsyncedSalesCount(sales);
+    setPending(unsynced);
+    const hasPendingWork = unsynced > 0 || workshopSyncPending > 0;
     if (!hasPendingWork) return;
     const t = setTimeout(() => void runSync(), 800);
     return () => clearTimeout(t);

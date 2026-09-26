@@ -68,6 +68,7 @@ import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
 import { MAX_INVENTORY_UNITS } from "@/lib/pos/validation";
 import { wholeUnits } from "@/lib/pos/quantities";
+import { markSalesFromServer } from "@/lib/sync/sync";
 
 type PosStore = PosPersistedState & {
   lastCompletedSale: CompletedSale | null;
@@ -505,14 +506,20 @@ export function PosProvider({ children }: { children: ReactNode }) {
 
   const mergeRemoteSales = useCallback((remoteSales: CompletedSale[]) => {
     const byId = new Map(store.sales.map((sale) => [sale.id, sale]));
+    const fromServer: CompletedSale[] = [];
     for (const remote of remoteSales) {
       const local = byId.get(remote.id);
       if (!local || saleProgress(remote) > saleProgress(local)) {
         byId.set(remote.id, remote);
+        fromServer.push(remote);
       } else if (!local.cashier && remote.cashier) {
         byId.set(remote.id, { ...local, cashier: remote.cashier });
       }
     }
+    // Lo que llegó del servidor ya está en el servidor: registrar su huella para
+    // no reenviarlo (antes, una caja reenviaba ventas de otros cajeros y el
+    // backend las rechazaba en cada ronda: «No puedes modificar esta venta»).
+    markSalesFromServer(fromServer);
     const sales = [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
     if (JSON.stringify(sales) !== JSON.stringify(store.sales)) persist({ sales });
   }, []);
