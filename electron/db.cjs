@@ -99,6 +99,30 @@ async function exportBackup(destination) {
   return destination;
 }
 
+// «Borrar ventas locales». El renderer manda el estado ya sin ventas; aquí se
+// guarda una copia de seguridad del pos.db anterior y luego se escribe el
+// estado nuevo en una sola transacción (todo o nada).
+function wipeLocalSales(dataJson) {
+  const parsed = JSON.parse(dataJson);
+  if (!parsed || !Array.isArray(parsed.products) || !Array.isArray(parsed.sales) || parsed.sales.length !== 0) {
+    throw new Error("Estado inválido para borrar ventas locales");
+  }
+  const database = getDb();
+  const safetyBackup = `${dbPath()}.before-wipe-sales-${Date.now()}`;
+  // Síncrono (VACUUM INTO): ningún otro guardado se cuela entre la copia y la escritura.
+  database.prepare("VACUUM INTO ?").run(safetyBackup);
+  const write = database.transaction(() => {
+    database
+      .prepare(
+        `INSERT INTO pos_state (id, data, updated_at) VALUES (1, @data, @ts)
+         ON CONFLICT(id) DO UPDATE SET data = @data, updated_at = @ts`,
+      )
+      .run({ data: dataJson, ts: new Date().toISOString() });
+  });
+  write();
+  return { safetyBackup };
+}
+
 function validateBackup(source) {
   if (!fs.existsSync(source)) throw new Error("El archivo de respaldo no existe");
   const backup = new Database(source, { readonly: true, fileMustExist: true });
@@ -132,4 +156,4 @@ function restoreBackup(source) {
   return { path: current, safetyBackup };
 }
 
-module.exports = { getDb, dbPath, loadState, saveState, loadOnboardingProgress, saveOnboardingProgress, exportBackup, restoreBackup };
+module.exports = { getDb, dbPath, loadState, saveState, loadOnboardingProgress, saveOnboardingProgress, exportBackup, restoreBackup, wipeLocalSales };

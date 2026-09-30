@@ -49,7 +49,10 @@ import {
   nextQuoteFolio,
   nextWorkshopFolio,
   savePosState,
+  saveWipedSalesState,
 } from "@/lib/pos/storage";
+import { wipeLocalSalesState } from "@/lib/pos/wipeSales";
+import { addWipedSaleIds, clearSyncedFingerprints } from "@/lib/sync/kv";
 import {
   deleteProduct as deleteProductApi,
   createProduct as createProductApi,
@@ -68,7 +71,7 @@ import { getAccessToken, getAuthSession, getBackgroundAccessToken } from "@/lib/
 import { emitOnboardingMilestone } from "@/features/onboarding/events";
 import { MAX_INVENTORY_UNITS } from "@/lib/pos/validation";
 import { wholeUnits } from "@/lib/pos/quantities";
-import { markSalesFromServer, recordServerBaseline } from "@/lib/sync/sync";
+import { markSalesFromServer, recordServerBaseline, withoutWipedSales } from "@/lib/sync/sync";
 
 type PosStore = PosPersistedState & {
   lastCompletedSale: CompletedSale | null;
@@ -122,8 +125,7 @@ function subscribe(listener: () => void) {
   return () => listeners.delete(listener);
 }
 
-function persist(partial: Partial<PosStore>) {
-  store = { ...store, ...partial };
+function persistedState(): PosPersistedState {
   const {
     products,
     deletedProductIds,
@@ -139,7 +141,7 @@ function persist(partial: Partial<PosStore>) {
     workshopFolioCounter,
     currentSale,
   } = store;
-  savePosState({
+  return {
     products,
     deletedProductIds,
     sales,
@@ -153,7 +155,12 @@ function persist(partial: Partial<PosStore>) {
     quoteFolioCounter,
     workshopFolioCounter,
     currentSale,
-  });
+  };
+}
+
+function persist(partial: Partial<PosStore>) {
+  store = { ...store, ...partial };
+  savePosState(persistedState());
   emit();
 }
 
@@ -323,6 +330,8 @@ type PosContextValue = {
   updateProduct: (id: string, input: ProductPatchInput) => Promise<PosProduct>;
   deleteProduct: (id: string) => Promise<void>;
   mergeRemoteSales: (sales: CompletedSale[]) => void;
+  /** Solo admin. Borra todas las ventas locales; devuelve cuántas se borraron. */
+  wipeLocalSales: () => Promise<{ removed: number; safetyBackup?: string }>;
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
@@ -504,7 +513,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
       .catch((error) => setCatalogError((error as Error).message));
   }, [refreshCatalog]);
 
-  const mergeRemoteSales = useCallback((remoteSales: CompletedSale[]) => {
+  const mergeRemoteSales = useCallback((incoming: CompletedSale[]) => {
+    // Ventas borradas con «Borrar ventas locales» no se vuelven a guardar.
+    const remoteSales = withoutWipedSales(incoming);
     const byId = new Map(store.sales.map((sale) => [sale.id, sale]));
     const fromServer: CompletedSale[] = [];
     for (const remote of remoteSales) {
@@ -525,6 +536,21 @@ export function PosProvider({ children }: { children: ReactNode }) {
     recordServerBaseline(remoteSales);
     const sales = [...byId.values()].sort((a, b) => b.date.localeCompare(a.date));
     if (JSON.stringify(sales) !== JSON.stringify(store.sales)) persist({ sales });
+  }, []);
+
+  const wipeLocalSales = useCallback(async () => {
+    if (getAuthSession()?.user.role !== "admin") {
+      throw new Error("Solo un administrador puede borrar las ventas locales");
+    }
+    const result = wipeLocalSalesState(persistedState());
+    // Primero el estado de sincronización: nada de lo borrado se vuelve a subir
+    // (ni una ronda de sincronización en curso) ni se vuelve a descargar.
+    addWipedSaleIds(result.removedSaleIds);
+    clearSyncedFingerprints();
+    store = { ...store, ...result.state, lastCompletedSale: null, successOpen: false, ticketOpen: false, checkoutOpen: false };
+    emit();
+    const { safetyBackup } = await saveWipedSalesState(result.state);
+    return { removed: result.removedSaleIds.length, safetyBackup };
   }, []);
 
   const subtotal = useMemo(
@@ -1400,6 +1426,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       updateProduct,
       deleteProduct,
       mergeRemoteSales,
+      wipeLocalSales,
     }),
     [
       snapshot,
@@ -1445,6 +1472,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       updateProduct,
       deleteProduct,
       mergeRemoteSales,
+      wipeLocalSales,
       catalogLoading,
       catalogError,
     ],

@@ -14,6 +14,7 @@ declare global {
       // Local SQLite persistence.
       loadStateSync: () => string | null;
       saveState: (dataJson: string) => Promise<boolean>;
+      wipeLocalSales?: (dataJson: string) => Promise<{ safetyBackup?: string }>;
       loadOnboardingProgress: (userId: string) => Promise<string | null>;
       saveOnboardingProgress: (userId: string, dataJson: string) => Promise<boolean>;
       dbPath: () => Promise<string>;

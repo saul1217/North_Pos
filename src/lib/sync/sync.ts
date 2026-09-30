@@ -1,5 +1,5 @@
 import type { CompletedSale } from "@/lib/pos/types";
-import { getSyncedFingerprints, recordSynced } from "./kv";
+import { getSyncedFingerprints, getWipedSaleIds, recordSynced } from "./kv";
 import { LEGACY_FINGERPRINT, saleSyncFingerprint } from "./fingerprint";
 import { postInChunks } from "./chunks";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
@@ -26,17 +26,24 @@ type SyncResponse = {
   failed?: SyncFailed[];
 };
 
+// Ventas borradas con «Borrar ventas locales» no se suben ni se vuelven a
+// guardar, aunque reaparezcan (respaldo restaurado u otra caja que las reenvió).
+export function withoutWipedSales(sales: CompletedSale[]): CompletedSale[] {
+  const wiped = getWipedSaleIds();
+  return wiped.size === 0 ? sales : sales.filter((s) => !wiped.has(s.id));
+}
+
 // Sales the backend has never confirmed (the outbox of new sales).
 export function pendingSales(sales: CompletedSale[]): CompletedSale[] {
   const synced = getSyncedFingerprints();
-  return sales.filter((s) => !synced.has(s.id));
+  return withoutWipedSales(sales).filter((s) => !synced.has(s.id));
 }
 
 // Already-synced sales whose status/cancel reason/returns changed since the
 // server last confirmed them (or synced before fingerprints existed).
 export function changedSales(sales: CompletedSale[]): CompletedSale[] {
   const synced = getSyncedFingerprints();
-  return sales.filter((s) => {
+  return withoutWipedSales(sales).filter((s) => {
     const confirmed = synced.get(s.id);
     return confirmed !== undefined && confirmed !== saleSyncFingerprint(s);
   });
@@ -46,7 +53,7 @@ export function changedSales(sales: CompletedSale[]): CompletedSale[] {
 export function unsyncedSalesCount(sales: CompletedSale[]): number {
   const synced = getSyncedFingerprints();
   let count = 0;
-  for (const s of sales) {
+  for (const s of withoutWipedSales(sales)) {
     const confirmed = synced.get(s.id);
     if (confirmed === undefined || confirmed !== saleSyncFingerprint(s)) count += 1;
   }
@@ -167,6 +174,9 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
     // One-by-one for new sales so a single poison sale cannot block the outbox,
     // even against an older backend that still rejects the whole batch.
     for (const sale of pending) {
+      // Si se borraron las ventas locales mientras esta ronda estaba en curso,
+      // no subir las que quedaban en la lista.
+      if (getWipedSaleIds().has(sale.id)) continue;
       const result = await postSalesBatch([toPayload(sale)]);
       if (!result.okHttp) {
         if (!firstError) firstError = result.error;
