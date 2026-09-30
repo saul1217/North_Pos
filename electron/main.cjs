@@ -73,6 +73,7 @@ ipcMain.handle("pos:saveState", (_event, dataJson) => {
   db.saveState(dataJson);
   return true;
 });
+ipcMain.handle("pos:wipeLocalSales", (_event, dataJson) => db.wipeLocalSales(dataJson));
 ipcMain.handle("pos:loadOnboardingProgress", (_event, userId) => db.loadOnboardingProgress(userId));
 ipcMain.handle("pos:saveOnboardingProgress", (_event, userId, dataJson) => db.saveOnboardingProgress(userId, dataJson));
 ipcMain.handle("pos:dbPath", () => db.dbPath());

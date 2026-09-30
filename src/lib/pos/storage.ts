@@ -121,6 +121,24 @@ export function savePosState(state: PosPersistedState): void {
   }
 }
 
+/**
+ * Escribe el estado ya sin ventas de inmediato (sin esperar el guardado
+ * diferido) en una sola transacción de SQLite. Descarta cualquier guardado
+ * pendiente anterior, que aún traería las ventas.
+ */
+export async function saveWipedSalesState(state: PosPersistedState): Promise<{ safetyBackup?: string }> {
+  if (typeof window === "undefined") return {};
+  pendingState = null;
+  const raw = JSON.stringify(state);
+  if (window.pos?.wipeLocalSales) return window.pos.wipeLocalSales(raw);
+  if (window.pos?.saveState) {
+    await window.pos.saveState(raw);
+    return {};
+  }
+  localStorage.setItem(POS_STATE_KEY, raw);
+  return {};
+}
+
 export function nextFolio(state: PosPersistedState): string {
   const next = state.folioCounter + 1;
   return `NB-${String(next).padStart(5, "0")}`;
