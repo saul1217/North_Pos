@@ -8,7 +8,7 @@ import { downloadSalesXlsx, filterMovementsForExport, filterSalesForExport, getS
 import type { PaymentMethod } from "@/lib/pos/types";
 import { getAuthSession } from "@/lib/auth";
 import { showNotice } from "@/lib/pos/notify";
-import { unsyncedSalesCount } from "@/lib/sync/sync";
+import { changedSales, pendingSales } from "@/lib/sync/sync";
 
 function localDateKey(): string {
   const now = new Date();
@@ -20,7 +20,8 @@ export default function PosRespaldoPage() {
   const isAdmin = getAuthSession()?.user.role === "admin";
   const [confirmWipe, setConfirmWipe] = useState(false);
   const [wiping, setWiping] = useState(false);
-  const notUploaded = useMemo(() => unsyncedSalesCount(sales), [sales]);
+  const newNotUploaded = useMemo(() => pendingSales(sales).length, [sales]);
+  const changesNotUploaded = useMemo(() => changedSales(sales).length, [sales]);
   const [period, setPeriod] = useState<SalesExportPeriod>("month");
   const [paymentMethod, setPaymentMethod] = useState<"todos" | PaymentMethod>("todos");
   const [cashier, setCashier] = useState("todos");
@@ -52,7 +53,7 @@ export default function PosRespaldoPage() {
     setWiping(true);
     try {
       const { removed } = await wipeLocalSales();
-      showNotice(`Se borraron ${removed} venta${removed === 1 ? "" : "s"} locales de esta caja. No se volverán a subir al servidor.`, "info");
+      showNotice(`Se borraron ${removed} venta${removed === 1 ? "" : "s"} de esta caja. El borrado en el servidor se enviará en cuanto haya internet (verás «Borrado pendiente de subir» hasta que se confirme).`, "info");
     } catch (error) {
       showNotice(`No se pudieron borrar las ventas locales: ${(error as Error).message}`);
     } finally {
@@ -88,7 +89,7 @@ export default function PosRespaldoPage() {
         {isAdmin && (
           <section className="mt-6 max-w-5xl border border-red-200 bg-white p-5">
             <div className="flex flex-wrap items-start justify-between gap-4">
-              <div className="flex items-start gap-3"><Trash2 className="mt-0.5 h-5 w-5 text-red-600" /><div><h2 className="font-semibold">Borrar ventas locales</h2><p className="mt-1 text-sm text-north-muted">Elimina de esta computadora todas las ventas (con sus pagos, devoluciones y cancelaciones) para que no se vuelvan a subir al servidor. No borra productos, stock, usuarios, apartados, cotizaciones ni taller.</p><p className="mt-2 text-sm">Ventas guardadas en esta caja: <strong>{sales.length}</strong></p></div></div>
+              <div className="flex items-start gap-3"><Trash2 className="mt-0.5 h-5 w-5 text-red-600" /><div><h2 className="font-semibold">Borrar ventas locales</h2><p className="mt-1 text-sm text-north-muted">Elimina todas las ventas (con sus pagos, devoluciones y cancelaciones) de esta computadora y también del servidor. El stock no cambia. No borra productos, usuarios, apartados, cotizaciones ni taller.</p><p className="mt-2 text-sm">Ventas guardadas en esta caja: <strong>{sales.length}</strong></p></div></div>
               <button type="button" disabled={sales.length === 0} onClick={() => setConfirmWipe(true)} className="inline-flex h-10 items-center gap-2 bg-red-600 px-4 text-sm font-semibold text-white disabled:cursor-not-allowed disabled:opacity-50"><Trash2 className="h-4 w-4" />Borrar ventas locales</button>
             </div>
           </section>
@@ -98,8 +99,10 @@ export default function PosRespaldoPage() {
         <div className="fixed inset-0 z-[900] flex items-center justify-center bg-black/40 p-4">
           <div role="dialog" aria-modal="true" aria-labelledby="wipe-sales-title" className="w-full max-w-md border border-north-border bg-white p-5 shadow-xl">
             <h2 id="wipe-sales-title" className="font-display text-lg font-bold uppercase tracking-[0.06em] text-red-700">Borrar ventas locales</h2>
-            <p className="mt-3 text-sm">Se borrarán <strong>{sales.length} venta{sales.length === 1 ? "" : "s"}</strong> de esta computadora, con sus pagos, devoluciones y cancelaciones. El folio de ventas volverá a NB-00001.</p>
-            {notUploaded > 0 && <p className="mt-2 text-sm text-red-700">{notUploaded} de ellas aún no se han subido al servidor y se perderán.</p>}
+            <p className="mt-3 text-sm">Se borrarán <strong>{sales.length} venta{sales.length === 1 ? "" : "s"}</strong>, con sus pagos, devoluciones y cancelaciones: <strong>en esta caja ahora</strong> y <strong>en el servidor cuando haya internet</strong>. El folio de ventas volverá a NB-00001.</p>
+            <p className="mt-2 text-sm">El stock no cambia (ni aquí ni en el servidor).</p>
+            {newNotUploaded > 0 && <p className="mt-2 text-sm text-red-700">{newNotUploaded} venta{newNotUploaded === 1 ? " nueva aún no se ha subido" : "s nuevas aún no se han subido"} al servidor.</p>}
+            {changesNotUploaded > 0 && <p className="mt-2 text-sm text-red-700">{changesNotUploaded} cancelaci{changesNotUploaded === 1 ? "ón o devolución aún no se ha subido" : "ones o devoluciones aún no se han subido"} al servidor.</p>}
             <p className="mt-3 border border-red-200 bg-red-50 px-3 py-2 text-sm font-medium text-red-800">Esta acción no se puede deshacer.</p>
             <div className="mt-5 flex justify-end gap-2">
               <button type="button" autoFocus disabled={wiping} onClick={() => setConfirmWipe(false)} className="h-10 border border-north-border px-4 text-sm font-semibold">Cancelar</button>
