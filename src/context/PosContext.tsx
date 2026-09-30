@@ -50,9 +50,12 @@ import {
   nextWorkshopFolio,
   savePosState,
   saveWipedSalesState,
+  tillIdWasGenerated,
 } from "@/lib/pos/storage";
-import { wipeLocalSalesState } from "@/lib/pos/wipeSales";
-import { addWipedSaleIds, clearSyncedFingerprints } from "@/lib/sync/kv";
+import { confirmSalePurge, removeSalesState, wipeLocalSalesState } from "@/lib/pos/wipeSales";
+import { withLocalOrigin } from "@/lib/pos/saleOrigin";
+import { clearSyncedFingerprints, readLegacyWipedSaleIds } from "@/lib/sync/kv";
+import { setWipedSaleIds } from "@/lib/sync/tombstones";
 import {
   deleteProduct as deleteProductApi,
   createProduct as createProductApi,
@@ -120,6 +123,12 @@ function subscribe(listener: () => void) {
       successOpen: false,
       ticketOpen: false,
     };
+    setWipedSaleIds(store.wipedSaleIds);
+    // Guardar ya en SQLite: el id de caja recién generado (antes de sellar
+    // ventas con él) y la lista de v0.1.21 migrada desde localStorage. Esa
+    // lista es de origen desconocido: queda solo como lápidas locales y NO se
+    // envía al servidor.
+    if (tillIdWasGenerated() || readLegacyWipedSaleIds().length > 0) persist({});
   }
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -140,6 +149,9 @@ function persistedState(): PosPersistedState {
     quoteFolioCounter,
     workshopFolioCounter,
     currentSale,
+    wipedSaleIds,
+    serverPurgeQueue,
+    tillId,
   } = store;
   return {
     products,
@@ -155,11 +167,15 @@ function persistedState(): PosPersistedState {
     quoteFolioCounter,
     workshopFolioCounter,
     currentSale,
+    wipedSaleIds,
+    serverPurgeQueue,
+    tillId,
   };
 }
 
 function persist(partial: Partial<PosStore>) {
   store = { ...store, ...partial };
+  if (partial.wipedSaleIds) setWipedSaleIds(store.wipedSaleIds);
   savePosState(persistedState());
   emit();
 }
@@ -330,8 +346,15 @@ type PosContextValue = {
   updateProduct: (id: string, input: ProductPatchInput) => Promise<PosProduct>;
   deleteProduct: (id: string) => Promise<void>;
   mergeRemoteSales: (sales: CompletedSale[]) => void;
-  /** Solo admin. Borra todas las ventas locales; devuelve cuántas se borraron. */
-  wipeLocalSales: () => Promise<{ removed: number; safetyBackup?: string }>;
+  /** Solo admin. Borra todas las ventas locales ya y encola su borrado en el servidor. */
+  wipeLocalSales: () => Promise<{ removed: number; server: number; safetyBackup?: string }>;
+  /** Id de esta caja (SQLite); se sella en las ventas que crea. */
+  tillId: string;
+  /** Ventas borradas en esta caja cuyo borrado en el servidor falta confirmar. */
+  serverPurgeQueue: string[];
+  confirmSalePurge: (ids: string[]) => void;
+  /** Quita ventas que el servidor reporta como borradas (otra caja las borró). */
+  dropDeletedSales: (ids: string[]) => void;
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
@@ -521,7 +544,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     for (const remote of remoteSales) {
       const local = byId.get(remote.id);
       if (!local || saleProgress(remote) > saleProgress(local)) {
-        byId.set(remote.id, remote);
+        byId.set(remote.id, withLocalOrigin(remote, local));
         fromServer.push(remote);
       } else if (!local.cashier && remote.cashier) {
         byId.set(remote.id, { ...local, cashier: remote.cashier });
@@ -542,15 +565,28 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (getAuthSession()?.user.role !== "admin") {
       throw new Error("Solo un administrador puede borrar las ventas locales");
     }
+    // Ventas, movimientos, lápidas y cola de borrado del servidor van en el
+    // mismo estado y se escriben en una sola transacción de SQLite.
     const result = wipeLocalSalesState(persistedState());
-    // Primero el estado de sincronización: nada de lo borrado se vuelve a subir
-    // (ni una ronda de sincronización en curso) ni se vuelve a descargar.
-    addWipedSaleIds(result.removedSaleIds);
+    setWipedSaleIds(result.state.wipedSaleIds);
     clearSyncedFingerprints();
     store = { ...store, ...result.state, lastCompletedSale: null, successOpen: false, ticketOpen: false, checkoutOpen: false };
     emit();
     const { safetyBackup } = await saveWipedSalesState(result.state);
-    return { removed: result.removedSaleIds.length, safetyBackup };
+    // Si hay internet, la barra de sincronización envía el borrado ya.
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("northbike-sales-purge-pending"));
+    return { removed: result.removedSaleIds.length, server: result.serverSaleIds.length, safetyBackup };
+  }, []);
+
+  const confirmSalePurgeIds = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    persist({ serverPurgeQueue: confirmSalePurge(store, ids) });
+  }, []);
+
+  const dropDeletedSales = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const { state } = removeSalesState(persistedState(), ids);
+    persist({ sales: state.sales, movements: state.movements, wipedSaleIds: state.wipedSaleIds });
   }, []);
 
   const subtotal = useMemo(
@@ -787,6 +823,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         change,
         status: "completada",
         returns: [],
+        originTillId: store.tillId,
       };
 
       let products = store.products;
@@ -1159,6 +1196,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       amountReceived: updatedLayaway.deposit,
       status: "completada",
       returns: [],
+      originTillId: store.tillId,
     };
 
     persist({
@@ -1427,6 +1465,10 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deleteProduct,
       mergeRemoteSales,
       wipeLocalSales,
+      serverPurgeQueue: snapshot.serverPurgeQueue,
+      tillId: snapshot.tillId,
+      confirmSalePurge: confirmSalePurgeIds,
+      dropDeletedSales,
     }),
     [
       snapshot,
@@ -1473,6 +1515,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deleteProduct,
       mergeRemoteSales,
       wipeLocalSales,
+      confirmSalePurgeIds,
+      dropDeletedSales,
       catalogLoading,
       catalogError,
     ],

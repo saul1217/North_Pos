@@ -112,6 +112,11 @@ export type CompletedSale = {
   status: SaleStatus;
   cancelReason?: string;
   returns: SaleReturnRecord[];
+  /**
+   * Caja (instalación) que creó la venta. Solo se guarda en esta caja: no se
+   * envía al servidor ni llega en las descargas. Sin valor = origen desconocido.
+   */
+  originTillId?: string;
 };
 
 export type CurrentSale = {
@@ -269,4 +274,10 @@ export type PosPersistedState = {
   workshopFolioCounter: number;
   /** Open cart; kept across module navigation and app restarts. */
   currentSale: CurrentSale;
+  /** Ventas borradas («Borrar ventas locales» o borradas en el servidor): nunca se suben ni se vuelven a guardar. */
+  wipedSaleIds: string[];
+  /** Ventas creadas en esta caja y borradas aquí, cuyo borrado en el servidor aún no se confirma. */
+  serverPurgeQueue: string[];
+  /** Id de esta instalación (se genera una vez y vive en SQLite). */
+  tillId: string;
 };

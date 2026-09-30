@@ -1,9 +1,11 @@
 import type { CompletedSale } from "@/lib/pos/types";
-import { getSyncedFingerprints, getWipedSaleIds, recordSynced } from "./kv";
+import { getSyncedFingerprints, recordSynced } from "./kv";
+import { getWipedSaleIds } from "./tombstones";
 import { LEGACY_FINGERPRINT, saleSyncFingerprint } from "./fingerprint";
 import { postInChunks } from "./chunks";
 import { clearAuthSession, getAccessToken } from "@/lib/auth";
 import { sanitizeReturnsForSync } from "@/lib/pos/quantities";
+import { DOWNLOADED_ORIGIN } from "@/lib/pos/saleOrigin";
 
 // Backend base URL. Baked at build time; defaults to the local backend for dev.
 // For the packaged app build with: VITE_API_URL=https://<tu-app>.up.railway.app
@@ -15,6 +17,8 @@ export type SyncOutcome = {
   ok: boolean;
   pushed: number; // sales newly applied on the server this round
   pending: number; // sales still not confirmed (new + pending status changes)
+  /** Ventas que el servidor reporta como borradas: se quitan de esta caja. */
+  deleted: string[];
   error?: string;
 };
 
@@ -24,6 +28,7 @@ type SyncResponse = {
   applied?: string[];
   skipped?: string[];
   failed?: SyncFailed[];
+  deleted?: string[];
 };
 
 // Ventas borradas con «Borrar ventas locales» no se suben ni se vuelven a
@@ -92,6 +97,10 @@ function toPayload(sale: CompletedSale) {
     id: sale.id,
     folio: sale.folio,
     date: sale.date,
+    // Caja que la creó (id de esta instalación, en SQLite). Solo las ventas
+    // creadas aquí lo llevan; el servidor lo guarda como terminalId y solo esa
+    // caja puede borrarlas con /sales/purge.
+    ...(sale.originTillId && sale.originTillId !== DOWNLOADED_ORIGIN ? { terminalId: sale.originTillId } : {}),
     items: sale.items.map((i) => ({
       lineId: i.lineId,
       productId: i.productId,
@@ -164,12 +173,13 @@ function recordConfirmed(sent: CompletedSale[], ids: string[]) {
 
 export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
   const pending = pendingSales(sales);
-  if (sales.length === 0) return { ok: true, pushed: 0, pending: 0 };
+  if (sales.length === 0) return { ok: true, pushed: 0, pending: 0, deleted: [] };
 
   try {
     let pushed = 0;
     let firstError: string | undefined;
     let pendingSucceeded = 0;
+    const deleted: string[] = [];
 
     // One-by-one for new sales so a single poison sale cannot block the outbox,
     // even against an older backend that still rejects the whole batch.
@@ -187,7 +197,10 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       const failed = result.data?.failed ?? [];
       recordConfirmed([sale], [...applied, ...skipped]);
       pushed += applied.length;
-      if (failed.length) {
+      if (result.data?.deleted?.includes(sale.id)) {
+        deleted.push(sale.id);
+        pendingSucceeded += 1;
+      } else if (failed.length) {
         if (!firstError) firstError = failed[0]?.reason || "Venta rechazada";
       } else if (applied.length > 0 || skipped.length > 0) {
         pendingSucceeded += 1;
@@ -202,21 +215,103 @@ export async function syncSales(sales: CompletedSale[]): Promise<SyncOutcome> {
       const merged = await postInChunks(updates.map(toPayload), postSalesBatch);
       recordConfirmed(updates, [...merged.applied, ...merged.skipped]);
       pushed += merged.applied.length;
+      deleted.push(...merged.deleted);
       if (!firstError) firstError = merged.errors[0] ?? (merged.failed.length ? merged.failed[0]?.reason || "Venta rechazada" : undefined);
     }
 
-    const stillPending = unsyncedSalesCount(sales);
+    const gone = new Set(deleted);
+    const stillPending = unsyncedSalesCount(gone.size ? sales.filter((s) => !gone.has(s.id)) : sales);
     // ok when nothing was pending, or at least one pending sale landed.
     const ok = pending.length === 0 || pendingSucceeded > 0;
     return {
       ok,
       pushed,
       pending: stillPending,
+      deleted,
       ...(firstError ? { error: firstError } : {}),
     };
   } catch (err) {
-    return { ok: false, pushed: 0, pending: unsyncedSalesCount(sales), error: (err as Error).message };
+    return { ok: false, pushed: 0, pending: unsyncedSalesCount(sales), deleted: [], error: (err as Error).message };
   }
+}
+
+// ---- Borrado en el servidor («Borrar ventas locales») ----
+
+export const MAX_PURGE_IDS_PER_REQUEST = 500;
+
+export type PurgeOutcome = {
+  ok: boolean;
+  /** Ids que el servidor ya no tiene ni aceptará: salen de la cola. */
+  confirmed: string[];
+  error?: string;
+};
+
+type PurgeResponse = { confirmedIds?: string[]; keptIds?: string[] };
+
+/**
+ * Envía el borrado pendiente en tandas. Idempotente en el servidor: reintentar
+ * ids ya borrados o desconocidos es seguro. Se detiene en la primera tanda que
+ * falla (sin internet, sesión sin permisos, error del servidor).
+ */
+export async function pushSalePurge(ids: string[], tillId: string): Promise<PurgeOutcome> {
+  const confirmed: string[] = [];
+  for (let i = 0; i < ids.length; i += MAX_PURGE_IDS_PER_REQUEST) {
+    const batch = ids.slice(i, i + MAX_PURGE_IDS_PER_REQUEST);
+    try {
+      const res = await fetch(`${API_BASE}/api/sales/purge`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(getAccessToken() ? { Authorization: `Bearer ${getAccessToken()}` } : {}),
+        },
+        // El servidor solo borra las ventas guardadas con este terminalId.
+        body: JSON.stringify({ ids: batch, terminalId: tillId }),
+      });
+      if (res.status === 401 && typeof window !== "undefined") {
+        clearAuthSession();
+        window.dispatchEvent(new CustomEvent("northbike-auth-expired"));
+      }
+      let raw: unknown = null;
+      try {
+        raw = await res.json();
+      } catch {
+        raw = null;
+      }
+      if (!res.ok) return { ok: false, confirmed, error: parseErrorMessage(res.status, raw) };
+      const data = (raw ?? {}) as PurgeResponse;
+      // «kept»: ventas que no son de esta caja (otra caja, sin caja o e-commerce).
+      // El servidor no las toca y tampoco se reintentan.
+      const done = new Set([...(data.confirmedIds ?? []), ...(data.keptIds ?? [])]);
+      confirmed.push(...batch.filter((id) => done.has(id)));
+      if (batch.some((id) => !done.has(id))) {
+        return { ok: false, confirmed, error: "El servidor no confirmó el borrado de todas las ventas" };
+      }
+    } catch (err) {
+      return { ok: false, confirmed, error: (err as Error).message || "Sin conexión" };
+    }
+  }
+  return { ok: true, confirmed };
+}
+
+/**
+ * Una ronda de sincronización de ventas: primero el borrado pendiente (si esta
+ * sesión puede hacerlo) y después las subidas. Así el servidor borra antes de
+ * recibir nada nuevo de esta caja.
+ */
+export async function syncSalesRound(input: {
+  sales: CompletedSale[];
+  pendingPurge: string[];
+  tillId: string;
+  canPurge: boolean;
+  onPurgeConfirmed: (ids: string[]) => void;
+}): Promise<{ purge: PurgeOutcome | null; outcome: SyncOutcome }> {
+  let purge: PurgeOutcome | null = null;
+  if (input.canPurge && input.pendingPurge.length > 0) {
+    purge = await pushSalePurge(input.pendingPurge, input.tillId);
+    if (purge.confirmed.length > 0) input.onPurgeConfirmed(purge.confirmed);
+  }
+  const outcome = await syncSales(input.sales);
+  return { purge, outcome };
 }
 
 export async function fetchSales(): Promise<CompletedSale[]> {
