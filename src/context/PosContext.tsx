@@ -50,8 +50,10 @@ import {
   nextWorkshopFolio,
   savePosState,
   saveWipedSalesState,
+  tillIdWasGenerated,
 } from "@/lib/pos/storage";
 import { confirmSalePurge, removeSalesState, wipeLocalSalesState } from "@/lib/pos/wipeSales";
+import { withLocalOrigin } from "@/lib/pos/saleOrigin";
 import { clearSyncedFingerprints, readLegacyWipedSaleIds } from "@/lib/sync/kv";
 import { setWipedSaleIds } from "@/lib/sync/tombstones";
 import {
@@ -122,15 +124,11 @@ function subscribe(listener: () => void) {
       ticketOpen: false,
     };
     setWipedSaleIds(store.wipedSaleIds);
-    // v0.1.21 borraba solo en esta caja y guardaba la lista en localStorage:
-    // pasa a SQLite y se encola su borrado en el servidor (idempotente).
-    const legacy = readLegacyWipedSaleIds();
-    if (legacy.length > 0) {
-      const pending = new Set(store.pendingSalePurge);
-      const missing = legacy.filter((id) => !pending.has(id));
-      if (missing.length > 0) persist({ pendingSalePurge: [...store.pendingSalePurge, ...missing] });
-      else persist({});
-    }
+    // Guardar ya en SQLite: el id de caja recién generado (antes de sellar
+    // ventas con él) y la lista de v0.1.21 migrada desde localStorage. Esa
+    // lista es de origen desconocido: queda solo como lápidas locales y NO se
+    // envía al servidor.
+    if (tillIdWasGenerated() || readLegacyWipedSaleIds().length > 0) persist({});
   }
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -152,7 +150,8 @@ function persistedState(): PosPersistedState {
     workshopFolioCounter,
     currentSale,
     wipedSaleIds,
-    pendingSalePurge,
+    serverPurgeQueue,
+    tillId,
   } = store;
   return {
     products,
@@ -169,7 +168,8 @@ function persistedState(): PosPersistedState {
     workshopFolioCounter,
     currentSale,
     wipedSaleIds,
-    pendingSalePurge,
+    serverPurgeQueue,
+    tillId,
   };
 }
 
@@ -347,9 +347,11 @@ type PosContextValue = {
   deleteProduct: (id: string) => Promise<void>;
   mergeRemoteSales: (sales: CompletedSale[]) => void;
   /** Solo admin. Borra todas las ventas locales ya y encola su borrado en el servidor. */
-  wipeLocalSales: () => Promise<{ removed: number; safetyBackup?: string }>;
+  wipeLocalSales: () => Promise<{ removed: number; server: number; safetyBackup?: string }>;
+  /** Id de esta caja (SQLite); se sella en las ventas que crea. */
+  tillId: string;
   /** Ventas borradas en esta caja cuyo borrado en el servidor falta confirmar. */
-  pendingSalePurge: string[];
+  serverPurgeQueue: string[];
   confirmSalePurge: (ids: string[]) => void;
   /** Quita ventas que el servidor reporta como borradas (otra caja las borró). */
   dropDeletedSales: (ids: string[]) => void;
@@ -542,7 +544,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
     for (const remote of remoteSales) {
       const local = byId.get(remote.id);
       if (!local || saleProgress(remote) > saleProgress(local)) {
-        byId.set(remote.id, remote);
+        byId.set(remote.id, withLocalOrigin(remote, local));
         fromServer.push(remote);
       } else if (!local.cashier && remote.cashier) {
         byId.set(remote.id, { ...local, cashier: remote.cashier });
@@ -573,12 +575,12 @@ export function PosProvider({ children }: { children: ReactNode }) {
     const { safetyBackup } = await saveWipedSalesState(result.state);
     // Si hay internet, la barra de sincronización envía el borrado ya.
     if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("northbike-sales-purge-pending"));
-    return { removed: result.removedSaleIds.length, safetyBackup };
+    return { removed: result.removedSaleIds.length, server: result.serverSaleIds.length, safetyBackup };
   }, []);
 
   const confirmSalePurgeIds = useCallback((ids: string[]) => {
     if (ids.length === 0) return;
-    persist({ pendingSalePurge: confirmSalePurge(store, ids) });
+    persist({ serverPurgeQueue: confirmSalePurge(store, ids) });
   }, []);
 
   const dropDeletedSales = useCallback((ids: string[]) => {
@@ -821,6 +823,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
         change,
         status: "completada",
         returns: [],
+        originTillId: store.tillId,
       };
 
       let products = store.products;
@@ -1193,6 +1196,7 @@ export function PosProvider({ children }: { children: ReactNode }) {
       amountReceived: updatedLayaway.deposit,
       status: "completada",
       returns: [],
+      originTillId: store.tillId,
     };
 
     persist({
@@ -1461,7 +1465,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deleteProduct,
       mergeRemoteSales,
       wipeLocalSales,
-      pendingSalePurge: snapshot.pendingSalePurge,
+      serverPurgeQueue: snapshot.serverPurgeQueue,
+      tillId: snapshot.tillId,
       confirmSalePurge: confirmSalePurgeIds,
       dropDeletedSales,
     }),

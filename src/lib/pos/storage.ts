@@ -33,8 +33,23 @@ export function getDefaultState(): PosPersistedState {
     workshopFolioCounter: 0,
     currentSale: emptySale(),
     wipedSaleIds: [],
-    pendingSalePurge: [],
+    serverPurgeQueue: [],
+    tillId: "",
   };
+}
+
+let generatedTillId = false;
+
+/** true si al cargar no había id de caja y se generó uno (hay que guardarlo ya). */
+export function tillIdWasGenerated(): boolean {
+  return generatedTillId;
+}
+
+function newTillId(): string {
+  generatedTillId = true;
+  return typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+    ? crypto.randomUUID()
+    : `till-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 }
 
 function stringList(value: unknown): string[] {
@@ -108,8 +123,7 @@ export function loadPosState(): PosPersistedState {
   try {
     const raw = readRawState();
     if (!raw) {
-      const legacy = mergeLegacyWipedSaleIds([]);
-      return legacy.length ? { ...getDefaultState(), wipedSaleIds: legacy } : getDefaultState();
+      return { ...getDefaultState(), wipedSaleIds: mergeLegacyWipedSaleIds([]), tillId: newTillId() };
     }
     const parsed = JSON.parse(raw) as PosPersistedState;
     const defaults = getDefaultState();
@@ -130,10 +144,14 @@ export function loadPosState(): PosPersistedState {
       workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
       currentSale,
       wipedSaleIds: mergeLegacyWipedSaleIds(stringList(parsed.wipedSaleIds)),
-      pendingSalePurge: stringList(parsed.pendingSalePurge),
+      // v0.1.22-beta.1 guardaba en «pendingSalePurge» TODAS las ventas borradas,
+      // también las descargadas de otras cajas. Esa cola no es confiable y se
+      // descarta (esos ids siguen como lápidas locales en wipedSaleIds).
+      serverPurgeQueue: stringList(parsed.serverPurgeQueue),
+      tillId: typeof parsed.tillId === "string" && parsed.tillId ? parsed.tillId : newTillId(),
     };
   } catch {
-    return getDefaultState();
+    return { ...getDefaultState(), tillId: newTillId() };
   }
 }
 

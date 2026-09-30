@@ -107,7 +107,7 @@ function wipeLocalSales(dataJson) {
   const parsed = JSON.parse(dataJson);
   if (
     !parsed || !Array.isArray(parsed.products) || !Array.isArray(parsed.sales) || parsed.sales.length !== 0 ||
-    !Array.isArray(parsed.wipedSaleIds) || !Array.isArray(parsed.pendingSalePurge)
+    !Array.isArray(parsed.wipedSaleIds) || !Array.isArray(parsed.serverPurgeQueue)
   ) {
     throw new Error("Estado inválido para borrar ventas locales");
   }

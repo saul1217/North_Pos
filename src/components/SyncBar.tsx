@@ -16,7 +16,8 @@ export function SyncBar() {
     refreshCatalog,
     catalogError,
     workshopError,
-    pendingSalePurge,
+    serverPurgeQueue,
+    tillId,
     confirmSalePurge,
     dropDeletedSales,
   } = usePos();
@@ -30,8 +31,8 @@ export function SyncBar() {
 
   const salesRef = useRef(sales);
   salesRef.current = sales;
-  const purgeRef = useRef(pendingSalePurge);
-  purgeRef.current = pendingSalePurge;
+  const purgeRef = useRef(serverPurgeQueue);
+  purgeRef.current = serverPurgeQueue;
   const [purgeError, setPurgeError] = useState<string | null>(null);
   const workshopPendingRef = useRef(workshopSyncPending);
   workshopPendingRef.current = workshopSyncPending;
@@ -70,6 +71,7 @@ export function SyncBar() {
       const { purge, outcome: res } = await syncSalesRound({
         sales: salesRef.current,
         pendingPurge: purgeRef.current,
+        tillId,
         canPurge: role === "admin",
         onPurgeConfirmed: confirmSalePurge,
       });
@@ -112,7 +114,7 @@ export function SyncBar() {
     }
     setSyncing(false);
     syncingRef.current = false;
-  }, [mergeRemoteSales, refreshCatalog, syncWorkshopOrders, confirmSalePurge, dropDeletedSales]);
+  }, [mergeRemoteSales, refreshCatalog, syncWorkshopOrders, confirmSalePurge, dropDeletedSales, tillId]);
 
   // Recompute pending when sales change, and push shortly after.
   useEffect(() => {
@@ -126,11 +128,11 @@ export function SyncBar() {
       setError(null);
     }
     const hasPendingWork = unsynced > 0 || workshopSyncPending > 0 ||
-      (pendingSalePurge.length > 0 && getAuthSession()?.user.role === "admin");
+      (serverPurgeQueue.length > 0 && getAuthSession()?.user.role === "admin");
     if (!hasPendingWork) return;
     const t = setTimeout(() => void runSync(), 800);
     return () => clearTimeout(t);
-  }, [sales, workshopSyncPending, pendingSalePurge, catalogError, workshopError, runSync]);
+  }, [sales, workshopSyncPending, serverPurgeQueue, catalogError, workshopError, runSync]);
 
   // Justo después de «Borrar ventas locales»: intentar el borrado en el servidor ya.
   useEffect(() => {
@@ -177,7 +179,7 @@ export function SyncBar() {
           ? "Error de sincronización — reintentar"
           : "Datos sincronizados";
   const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
-  const purgeCount = pendingSalePurge.length;
+  const purgeCount = serverPurgeQueue.length;
   const purgeHint = getAuthSession()?.user.role !== "admin"
     ? "Se enviará cuando un administrador inicie sesión con internet."
     : purgeError

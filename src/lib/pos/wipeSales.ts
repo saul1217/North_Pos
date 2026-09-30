@@ -1,4 +1,5 @@
 import type { InventoryMovementType, PosPersistedState } from "@/lib/pos/types";
+import { splitSalesByOrigin } from "@/lib/pos/saleOrigin";
 
 // «Borrar ventas locales»: quita de esta caja todas las ventas y lo que depende
 // de ellas. Artículos, pagos, devoluciones y cancelaciones viven dentro de cada
@@ -8,7 +9,7 @@ import type { InventoryMovementType, PosPersistedState } from "@/lib/pos/types";
 // carrito abierto y los demás folios se conservan.
 //
 // Los ids borrados quedan como lápidas (wipedSaleIds) y en la cola de borrado
-// del servidor (pendingSalePurge), en el mismo estado que se guarda en una sola
+// del servidor (serverPurgeQueue), en el mismo estado que se guarda en una sola
 // transacción de SQLite.
 
 const SALE_MOVEMENT_TYPES = new Set<InventoryMovementType>(["venta", "cancelacion", "devolucion"]);
@@ -17,6 +18,8 @@ export type WipeLocalSalesResult = {
   state: PosPersistedState;
   removedSaleIds: string[];
   removedMovements: number;
+  /** Ids que se encolaron para borrarse también en el servidor. */
+  serverSaleIds: string[];
 };
 
 function union(a: string[], b: string[]): string[] {
@@ -37,19 +40,22 @@ export function removeSalesState(state: PosPersistedState, ids: Iterable<string>
     state: { ...state, sales: kept, movements, wipedSaleIds: union(state.wipedSaleIds, [...remove]) },
     removedSaleIds: removed.map((sale) => sale.id),
     removedMovements: state.movements.length - movements.length,
+    serverSaleIds: [],
   };
 }
 
 export function wipeLocalSalesState(state: PosPersistedState): WipeLocalSalesResult {
   const result = removeSalesState(state, state.sales.map((sale) => sale.id));
+  const serverSaleIds = splitSalesByOrigin(state.sales, state.tillId).mine.map((sale) => sale.id);
   return {
     ...result,
+    serverSaleIds,
     state: {
       ...result.state,
       // Sin ventas locales el folio vuelve a empezar (NB-00001). En el servidor
       // el folio no es único: las ventas se identifican por id.
       folioCounter: 0,
-      pendingSalePurge: union(state.pendingSalePurge, result.removedSaleIds),
+      serverPurgeQueue: union(state.serverPurgeQueue, serverSaleIds),
     },
   };
 }
@@ -57,5 +63,5 @@ export function wipeLocalSalesState(state: PosPersistedState): WipeLocalSalesRes
 /** Quita de la cola los ids que el servidor ya confirmó. */
 export function confirmSalePurge(state: PosPersistedState, confirmed: Iterable<string>): string[] {
   const done = new Set(confirmed);
-  return state.pendingSalePurge.filter((id) => !done.has(id));
+  return state.serverPurgeQueue.filter((id) => !done.has(id));
 }
