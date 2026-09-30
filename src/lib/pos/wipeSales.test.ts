@@ -364,3 +364,18 @@ test("migraciones: lápidas de v0.1.21 y la cola de v0.1.22-beta.1 quedan solo l
   assert.deepEqual(loaded.serverPurgeQueue, [], "nada de origen desconocido va al servidor");
   assert.deepEqual(loaded.wipedSaleIds.sort(), ["x", "y", "z"]);
 });
+
+test("caja limpiada en v0.1.21 que actualiza a beta.2: cero peticiones de borrado", async () => {
+  // v0.1.21: ventas borradas solo en la caja, lista en localStorage; el estado ya no tiene ventas.
+  storage.set(LEGACY_WIPED_KEY, JSON.stringify(Array.from({ length: 139 }, (_, i) => `v21-${i}`)));
+  storage.set(POS_STATE_KEY, JSON.stringify({ ...stateWith([]), serverPurgeQueue: undefined, tillId: undefined }));
+  const loaded = loadPosState();
+  setWipedSaleIds(loaded.wipedSaleIds);
+  assert.equal(loaded.wipedSaleIds.length, 139);
+  assert.deepEqual(loaded.serverPurgeQueue, []);
+  const round = await syncSalesRound({ sales: loaded.sales, pendingPurge: loaded.serverPurgeQueue, tillId: loaded.tillId, canPurge: true, onPurgeConfirmed: () => assert.fail() });
+  assert.equal(round.purge, null);
+  assert.equal(server.requests.filter((r) => r.path === "/sales/purge").length, 0);
+  // Y la descarga no vuelve a guardar esas ventas.
+  assert.deepEqual(withoutWipedSales([sale("v21-5", "x"), sale("nueva", "y")]).map((s) => s.id), ["nueva"]);
+});

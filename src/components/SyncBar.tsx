@@ -34,6 +34,8 @@ export function SyncBar() {
   const purgeRef = useRef(serverPurgeQueue);
   purgeRef.current = serverPurgeQueue;
   const [purgeError, setPurgeError] = useState<string | null>(null);
+  // Hay red pero el servidor no responde (error de red en fetch): se muestra como sin conexión.
+  const [serverReachable, setServerReachable] = useState(true);
   const workshopPendingRef = useRef(workshopSyncPending);
   workshopPendingRef.current = workshopSyncPending;
   const catalogErrorRef = useRef(catalogError);
@@ -76,6 +78,8 @@ export function SyncBar() {
         onPurgeConfirmed: confirmSalePurge,
       });
       setPurgeError(purge && !purge.ok ? purge.error ?? "error" : null);
+      const networkDown = [purge?.error, res.error].some((message) => isNetworkError(message));
+      setServerReachable(!networkDown);
       if (purge && !purge.ok) failed = true;
       // Ventas que otra caja borró en el servidor: se quitan también aquí.
       if (res.deleted.length > 0) dropDeletedSales(res.deleted);
@@ -95,7 +99,9 @@ export function SyncBar() {
       try {
         const remoteSales = await fetchSales();
         mergeRemoteSales(remoteSales);
+        if (!networkDown) setServerReachable(true);
       } catch (salesError) {
+        if (isNetworkError((salesError as Error).message)) setServerReachable(false);
         failed = true;
         setError((salesError as Error).message || "No se pudieron descargar las ventas");
       }
@@ -163,7 +169,8 @@ export function SyncBar() {
   const totalPending = pending + workshopSyncPending;
   const hasSyncError = Boolean(error || catalogError);
   const syncErrorMessage = error || catalogError;
-  const state = !online ? "offline" : totalPending > 0 || hasSyncError ? "pending" : "synced";
+  const offlineNow = !online || !serverReachable;
+  const state = offlineNow ? "offline" : totalPending > 0 || hasSyncError ? "pending" : "synced";
   const styles = {
     offline: "border-red-200 bg-red-50 text-red-700",
     pending: "border-amber-200 bg-amber-50 text-amber-800",
@@ -173,12 +180,14 @@ export function SyncBar() {
     ? "Sincronizando..."
     : !online
       ? "Sin conexión"
+      : !serverReachable
+        ? "Sin conexión con el servidor"
       : totalPending > 0
         ? `${totalPending} ${totalPending === 1 ? "elemento pendiente" : "elementos pendientes"}`
         : hasSyncError
           ? "Error de sincronización — reintentar"
           : "Datos sincronizados";
-  const Icon = !online ? CloudOff : state === "pending" ? Cloud : Check;
+  const Icon = offlineNow ? CloudOff : state === "pending" ? Cloud : Check;
   const purgeCount = serverPurgeQueue.length;
   const purgeHint = getAuthSession()?.user.role !== "admin"
     ? "Se enviará cuando un administrador inicie sesión con internet."
@@ -192,6 +201,15 @@ export function SyncBar() {
         <span role="status" title={purgeHint} className="inline-flex items-center gap-1.5 rounded-full border border-red-200 bg-red-50 px-2.5 py-1 text-xs font-medium text-red-700">
           <Trash2 className="h-3.5 w-3.5" />
           Borrado pendiente de subir ({purgeCount} {purgeCount === 1 ? "venta" : "ventas"})
+        </span>
+      )}
+      {purgeCount > 0 && (
+        <span className="max-w-[min(70vw,520px)] text-[11px] text-red-700">
+          {getAuthSession()?.user.role !== "admin"
+            ? "Requiere que un administrador inicie sesión con internet."
+            : purgeError
+              ? `No se pudo enviar el borrado: ${purgeError}. Se reintentará automáticamente.`
+              : null}
         </span>
       )}
       {hasSyncError && (
@@ -214,4 +232,8 @@ export function SyncBar() {
       </button>
     </div>
   );
+}
+
+function isNetworkError(message: string | undefined): boolean {
+  return Boolean(message && /failed to fetch|networkerror|network request failed|fetch failed|load failed/i.test(message));
 }
