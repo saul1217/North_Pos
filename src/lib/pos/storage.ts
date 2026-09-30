@@ -9,6 +9,7 @@ import type {
   WorkshopOrder,
   WorkshopSyncOperation,
 } from "@/lib/pos/types";
+import { readLegacyWipedSaleIds, removeLegacyWipedSaleIds } from "@/lib/sync/kv";
 
 export const POS_STATE_KEY = "northbike-pos-state-v2";
 
@@ -31,7 +32,29 @@ export function getDefaultState(): PosPersistedState {
     quoteFolioCounter: 0,
     workshopFolioCounter: 0,
     currentSale: emptySale(),
+    wipedSaleIds: [],
+    pendingSalePurge: [],
   };
+}
+
+function stringList(value: unknown): string[] {
+  return Array.isArray(value) ? [...new Set(value.filter((id): id is string => typeof id === "string" && id.length > 0))] : [];
+}
+
+/**
+ * Migración v0.1.21 → v0.1.22: la lista de ventas borradas pasaba por
+ * localStorage. Se une a la de SQLite; la clave vieja se quita solo cuando
+ * SQLite ya contiene todos sus ids (es decir, tras un guardado).
+ */
+function mergeLegacyWipedSaleIds(fromState: string[]): string[] {
+  const legacy = readLegacyWipedSaleIds();
+  if (legacy.length === 0) return fromState;
+  const saved = new Set(fromState);
+  if (legacy.every((id) => saved.has(id))) {
+    removeLegacyWipedSaleIds();
+    return fromState;
+  }
+  return [...new Set([...fromState, ...legacy])];
 }
 
 // Persistence backend: SQLite (via the Electron `window.pos` bridge) when
@@ -84,7 +107,10 @@ export function loadPosState(): PosPersistedState {
   if (typeof window === "undefined") return getDefaultState();
   try {
     const raw = readRawState();
-    if (!raw) return getDefaultState();
+    if (!raw) {
+      const legacy = mergeLegacyWipedSaleIds([]);
+      return legacy.length ? { ...getDefaultState(), wipedSaleIds: legacy } : getDefaultState();
+    }
     const parsed = JSON.parse(raw) as PosPersistedState;
     const defaults = getDefaultState();
     const sale = parsed.currentSale;
@@ -103,6 +129,8 @@ export function loadPosState(): PosPersistedState {
       deletedProductIds: parsed.deletedProductIds ?? [],
       workshopSyncQueue: (parsed.workshopSyncQueue ?? []) as WorkshopSyncOperation[],
       currentSale,
+      wipedSaleIds: mergeLegacyWipedSaleIds(stringList(parsed.wipedSaleIds)),
+      pendingSalePurge: stringList(parsed.pendingSalePurge),
     };
   } catch {
     return getDefaultState();

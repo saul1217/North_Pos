@@ -9,7 +9,7 @@ export const MAX_REQUEST_BYTES = 90_000;
 
 export type ChunkPostResult = {
   okHttp: boolean;
-  data: { applied?: string[]; skipped?: string[]; failed?: { id: string; reason: string }[] } | null;
+  data: { applied?: string[]; skipped?: string[]; failed?: { id: string; reason: string }[]; deleted?: string[] } | null;
   error?: string;
 };
 
@@ -17,6 +17,8 @@ export type MergedChunkResult = {
   applied: string[];
   skipped: string[];
   failed: { id: string; reason: string }[];
+  /** Ventas que el servidor borró («Borrar ventas locales» en otra caja). */
+  deleted: string[];
   /** Errores de tandas completas (HTTP/red), en orden. */
   errors: string[];
   chunks: number;
@@ -52,7 +54,7 @@ export async function postInChunks<T>(
   maxCount = MAX_SALES_PER_REQUEST,
   maxBytes = MAX_REQUEST_BYTES,
 ): Promise<MergedChunkResult> {
-  const merged: MergedChunkResult = { applied: [], skipped: [], failed: [], errors: [], chunks: 0 };
+  const merged: MergedChunkResult = { applied: [], skipped: [], failed: [], deleted: [], errors: [], chunks: 0 };
   for (const chunk of chunkForSync(items, maxCount, maxBytes)) {
     merged.chunks += 1;
     try {
@@ -64,6 +66,7 @@ export async function postInChunks<T>(
       merged.applied.push(...(result.data?.applied ?? []));
       merged.skipped.push(...(result.data?.skipped ?? []));
       merged.failed.push(...(result.data?.failed ?? []));
+      merged.deleted.push(...(result.data?.deleted ?? []));
     } catch (error) {
       merged.errors.push((error as Error)?.message || "Error de red");
     }

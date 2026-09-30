@@ -81,27 +81,23 @@ export function recordSynced(entries: { id: string; fingerprint: string }[]): vo
   if (v1.size !== before) localStorage.setItem(SYNCED_V1_KEY, JSON.stringify([...v1]));
 }
 
-// Ventas borradas a propósito en esta caja («Borrar ventas locales»). Nunca se
-// vuelven a subir (aunque reaparezcan al restaurar un respaldo anterior) ni se
-// vuelven a guardar si el servidor u otra caja las devuelve en GET /sales.
-const WIPED_KEY = "northbike-pos-wiped-sales-v1";
+// v0.1.21 guardaba la lista de ventas borradas aquí (localStorage). Desde
+// v0.1.22 vive en SQLite (estado del POS); esto solo se lee para migrarla.
+export const LEGACY_WIPED_KEY = "northbike-pos-wiped-sales-v1";
 
-export function getWipedSaleIds(): Set<string> {
-  if (typeof window === "undefined") return new Set();
+export function readLegacyWipedSaleIds(): string[] {
+  if (typeof window === "undefined") return [];
   try {
-    const raw = localStorage.getItem(WIPED_KEY);
+    const raw = localStorage.getItem(LEGACY_WIPED_KEY);
     const parsed = raw ? (JSON.parse(raw) as unknown) : [];
-    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : [];
   } catch {
-    return new Set();
+    return [];
   }
 }
 
-export function addWipedSaleIds(ids: string[]): void {
-  if (typeof window === "undefined" || ids.length === 0) return;
-  const wiped = getWipedSaleIds();
-  for (const id of ids) wiped.add(id);
-  localStorage.setItem(WIPED_KEY, JSON.stringify([...wiped]));
+export function removeLegacyWipedSaleIds(): void {
+  if (typeof window !== "undefined") localStorage.removeItem(LEGACY_WIPED_KEY);
 }
 
 /** Olvida el cursor de sincronización de ventas (v1 y v2). */

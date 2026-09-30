@@ -269,4 +269,8 @@ export type PosPersistedState = {
   workshopFolioCounter: number;
   /** Open cart; kept across module navigation and app restarts. */
   currentSale: CurrentSale;
+  /** Ventas borradas («Borrar ventas locales» o borradas en el servidor): nunca se suben ni se vuelven a guardar. */
+  wipedSaleIds: string[];
+  /** Ventas borradas en esta caja cuyo borrado en el servidor aún no se confirma. */
+  pendingSalePurge: string[];
 };

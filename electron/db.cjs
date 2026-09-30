@@ -99,12 +99,16 @@ async function exportBackup(destination) {
   return destination;
 }
 
-// «Borrar ventas locales». El renderer manda el estado ya sin ventas; aquí se
-// guarda una copia de seguridad del pos.db anterior y luego se escribe el
-// estado nuevo en una sola transacción (todo o nada).
+// «Borrar ventas locales». El renderer manda el estado ya sin ventas, con las
+// lápidas y la cola de borrado del servidor; aquí se guarda una copia del
+// pos.db anterior y luego se escribe el estado nuevo en una sola transacción
+// (todo o nada: ventas, lápidas y cola a la vez).
 function wipeLocalSales(dataJson) {
   const parsed = JSON.parse(dataJson);
-  if (!parsed || !Array.isArray(parsed.products) || !Array.isArray(parsed.sales) || parsed.sales.length !== 0) {
+  if (
+    !parsed || !Array.isArray(parsed.products) || !Array.isArray(parsed.sales) || parsed.sales.length !== 0 ||
+    !Array.isArray(parsed.wipedSaleIds) || !Array.isArray(parsed.pendingSalePurge)
+  ) {
     throw new Error("Estado inválido para borrar ventas locales");
   }
   const database = getDb();
@@ -120,7 +124,24 @@ function wipeLocalSales(dataJson) {
       .run({ data: dataJson, ts: new Date().toISOString() });
   });
   write();
+  removeOlderWipeBackups(safetyBackup);
   return { safetyBackup };
+}
+
+// Solo se conserva la copia del último borrado; las anteriores se eliminan.
+function removeOlderWipeBackups(keep) {
+  const dir = path.dirname(keep);
+  const prefix = `${path.basename(dbPath())}.before-wipe-sales-`;
+  for (const name of fs.readdirSync(dir)) {
+    const full = path.join(dir, name);
+    if (name.startsWith(prefix) && full !== keep) {
+      try {
+        fs.rmSync(full, { force: true });
+      } catch (err) {
+        console.error("No se pudo borrar la copia anterior:", full, err);
+      }
+    }
+  }
 }
 
 function validateBackup(source) {

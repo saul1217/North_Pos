@@ -51,8 +51,9 @@ import {
   savePosState,
   saveWipedSalesState,
 } from "@/lib/pos/storage";
-import { wipeLocalSalesState } from "@/lib/pos/wipeSales";
-import { addWipedSaleIds, clearSyncedFingerprints } from "@/lib/sync/kv";
+import { confirmSalePurge, removeSalesState, wipeLocalSalesState } from "@/lib/pos/wipeSales";
+import { clearSyncedFingerprints, readLegacyWipedSaleIds } from "@/lib/sync/kv";
+import { setWipedSaleIds } from "@/lib/sync/tombstones";
 import {
   deleteProduct as deleteProductApi,
   createProduct as createProductApi,
@@ -120,6 +121,16 @@ function subscribe(listener: () => void) {
       successOpen: false,
       ticketOpen: false,
     };
+    setWipedSaleIds(store.wipedSaleIds);
+    // v0.1.21 borraba solo en esta caja y guardaba la lista en localStorage:
+    // pasa a SQLite y se encola su borrado en el servidor (idempotente).
+    const legacy = readLegacyWipedSaleIds();
+    if (legacy.length > 0) {
+      const pending = new Set(store.pendingSalePurge);
+      const missing = legacy.filter((id) => !pending.has(id));
+      if (missing.length > 0) persist({ pendingSalePurge: [...store.pendingSalePurge, ...missing] });
+      else persist({});
+    }
   }
   listeners.add(listener);
   return () => listeners.delete(listener);
@@ -140,6 +151,8 @@ function persistedState(): PosPersistedState {
     quoteFolioCounter,
     workshopFolioCounter,
     currentSale,
+    wipedSaleIds,
+    pendingSalePurge,
   } = store;
   return {
     products,
@@ -155,11 +168,14 @@ function persistedState(): PosPersistedState {
     quoteFolioCounter,
     workshopFolioCounter,
     currentSale,
+    wipedSaleIds,
+    pendingSalePurge,
   };
 }
 
 function persist(partial: Partial<PosStore>) {
   store = { ...store, ...partial };
+  if (partial.wipedSaleIds) setWipedSaleIds(store.wipedSaleIds);
   savePosState(persistedState());
   emit();
 }
@@ -330,8 +346,13 @@ type PosContextValue = {
   updateProduct: (id: string, input: ProductPatchInput) => Promise<PosProduct>;
   deleteProduct: (id: string) => Promise<void>;
   mergeRemoteSales: (sales: CompletedSale[]) => void;
-  /** Solo admin. Borra todas las ventas locales; devuelve cuántas se borraron. */
+  /** Solo admin. Borra todas las ventas locales ya y encola su borrado en el servidor. */
   wipeLocalSales: () => Promise<{ removed: number; safetyBackup?: string }>;
+  /** Ventas borradas en esta caja cuyo borrado en el servidor falta confirmar. */
+  pendingSalePurge: string[];
+  confirmSalePurge: (ids: string[]) => void;
+  /** Quita ventas que el servidor reporta como borradas (otra caja las borró). */
+  dropDeletedSales: (ids: string[]) => void;
 };
 
 const PosContext = createContext<PosContextValue | null>(null);
@@ -542,15 +563,28 @@ export function PosProvider({ children }: { children: ReactNode }) {
     if (getAuthSession()?.user.role !== "admin") {
       throw new Error("Solo un administrador puede borrar las ventas locales");
     }
+    // Ventas, movimientos, lápidas y cola de borrado del servidor van en el
+    // mismo estado y se escriben en una sola transacción de SQLite.
     const result = wipeLocalSalesState(persistedState());
-    // Primero el estado de sincronización: nada de lo borrado se vuelve a subir
-    // (ni una ronda de sincronización en curso) ni se vuelve a descargar.
-    addWipedSaleIds(result.removedSaleIds);
+    setWipedSaleIds(result.state.wipedSaleIds);
     clearSyncedFingerprints();
     store = { ...store, ...result.state, lastCompletedSale: null, successOpen: false, ticketOpen: false, checkoutOpen: false };
     emit();
     const { safetyBackup } = await saveWipedSalesState(result.state);
+    // Si hay internet, la barra de sincronización envía el borrado ya.
+    if (typeof window !== "undefined") window.dispatchEvent(new CustomEvent("northbike-sales-purge-pending"));
     return { removed: result.removedSaleIds.length, safetyBackup };
+  }, []);
+
+  const confirmSalePurgeIds = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    persist({ pendingSalePurge: confirmSalePurge(store, ids) });
+  }, []);
+
+  const dropDeletedSales = useCallback((ids: string[]) => {
+    if (ids.length === 0) return;
+    const { state } = removeSalesState(persistedState(), ids);
+    persist({ sales: state.sales, movements: state.movements, wipedSaleIds: state.wipedSaleIds });
   }, []);
 
   const subtotal = useMemo(
@@ -1427,6 +1461,9 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deleteProduct,
       mergeRemoteSales,
       wipeLocalSales,
+      pendingSalePurge: snapshot.pendingSalePurge,
+      confirmSalePurge: confirmSalePurgeIds,
+      dropDeletedSales,
     }),
     [
       snapshot,
@@ -1473,6 +1510,8 @@ export function PosProvider({ children }: { children: ReactNode }) {
       deleteProduct,
       mergeRemoteSales,
       wipeLocalSales,
+      confirmSalePurgeIds,
+      dropDeletedSales,
       catalogLoading,
       catalogError,
     ],
