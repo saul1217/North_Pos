@@ -80,3 +80,33 @@ export function recordSynced(entries: { id: string; fingerprint: string }[]): vo
   for (const { id } of entries) v1.add(id);
   if (v1.size !== before) localStorage.setItem(SYNCED_V1_KEY, JSON.stringify([...v1]));
 }
+
+// Ventas borradas a propósito en esta caja («Borrar ventas locales»). Nunca se
+// vuelven a subir (aunque reaparezcan al restaurar un respaldo anterior) ni se
+// vuelven a guardar si el servidor u otra caja las devuelve en GET /sales.
+const WIPED_KEY = "northbike-pos-wiped-sales-v1";
+
+export function getWipedSaleIds(): Set<string> {
+  if (typeof window === "undefined") return new Set();
+  try {
+    const raw = localStorage.getItem(WIPED_KEY);
+    const parsed = raw ? (JSON.parse(raw) as unknown) : [];
+    return new Set(Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []);
+  } catch {
+    return new Set();
+  }
+}
+
+export function addWipedSaleIds(ids: string[]): void {
+  if (typeof window === "undefined" || ids.length === 0) return;
+  const wiped = getWipedSaleIds();
+  for (const id of ids) wiped.add(id);
+  localStorage.setItem(WIPED_KEY, JSON.stringify([...wiped]));
+}
+
+/** Olvida el cursor de sincronización de ventas (v1 y v2). */
+export function clearSyncedFingerprints(): void {
+  if (typeof window === "undefined") return;
+  localStorage.removeItem(SYNCED_V2_KEY);
+  localStorage.removeItem(SYNCED_V1_KEY);
+}
