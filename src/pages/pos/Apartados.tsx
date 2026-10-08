@@ -4,7 +4,7 @@ import { Plus, Printer, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { LayawayReceipt } from "@/components/pos/LayawayReceipt";
 import { usePos } from "@/context/PosContext";
-import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
+import { formatPosPrice, makeLineId, productsForCodeQuery } from "@/lib/pos/inventory";
 import type { Layaway, PosProduct, SaleLineItem } from "@/lib/pos/types";
 import { printTicket } from "@/lib/pos/printTicket";
 import { isValidPhone } from "@/lib/pos/validation";
@@ -45,13 +45,17 @@ export default function PosApartadosPage() {
 
   const availableProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase();
-    return products.filter((p) => {
-      if (p.status !== "activo" || p.stock <= 0) return false;
-      if (!q) return true;
-      return [p.name, p.sku, p.upc, p.barcode].some((value) =>
+    const available = products.filter((p) => p.status === "activo" && p.stock > 0);
+    if (!q) return available;
+    const matches = available.filter((p) =>
+      [p.name, p.sku, p.upc, p.barcode].some((value) =>
         value?.toLowerCase().includes(q),
-      );
-    });
+      ),
+    );
+    if (matches.length > 0) return matches;
+    // Escaneo con el lector en distribución US sobre teclado LatAm/ES
+    // («CSS'001»): si el texto no coincide, se reintenta como código corregido.
+    return productsForCodeQuery(available, productQuery);
   }, [products, productQuery]);
 
   function toggleProduct(p: PosProduct) {

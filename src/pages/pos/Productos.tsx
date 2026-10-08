@@ -4,7 +4,7 @@ import Image from "next/image";
 import { Check, Eye, Minus, PackagePlus, Pencil, Plus, RefreshCw, ScanBarcode, Search, Trash2, Upload, X } from "lucide-react";
 import { Fragment, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { usePos } from "@/context/PosContext";
-import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode, type CodeMatchKind } from "@/lib/pos/inventory";
+import { categoryLabels, formatPosPrice, getCategoryLabel, lookupProductByCode, normalizeCode, productsForCodeQuery, type CodeMatchKind } from "@/lib/pos/inventory";
 import type { PosProduct, ProductVariant, SerialUnit } from "@/lib/pos/types";
 import type { ProductInput, SkuCategory } from "@/lib/catalog/api";
 import { createSkuCategory, diffProductInput, fetchSkuCategories, productToInput, toSerialUnitInput, toVariantInput, uploadProductImage } from "@/lib/catalog/api";
@@ -145,7 +145,7 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
     const q = query.trim().toLowerCase();
     const source = onlyCategory ? products.filter((product) => product.category === onlyCategory) : products;
     if (!q) return source;
-    return source.filter(
+    const matches = source.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
@@ -153,6 +153,10 @@ export default function PosProductosPage({ onlyCategory, title = "Productos" }: 
         p.barcode.toLowerCase().includes(q) ||
         getCategoryLabel(p.category).toLowerCase().includes(q),
     );
+    if (matches.length > 0) return matches;
+    // Escaneo con el lector en distribución US sobre teclado LatAm/ES
+    // («CSS'001»): si el texto no coincide, se reintenta como código corregido.
+    return productsForCodeQuery(source, query);
   }, [products, query, onlyCategory]);
 
   const categoryOptions = useMemo(() => {
