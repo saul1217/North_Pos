@@ -8,6 +8,7 @@ import {
   getStockStatus,
   getCategoryLabel,
   movementTypeLabels,
+  productsForCodeQuery,
 } from "@/lib/pos/inventory";
 import type { InventoryAdjustmentType, PosProduct } from "@/lib/pos/types";
 import { getAuthSession } from "@/lib/auth";
@@ -48,13 +49,17 @@ export default function PosInventarioPage() {
     }
     const q = query.trim().toLowerCase();
     if (!q) return list;
-    return list.filter(
+    const matches = list.filter(
       (p) =>
         p.name.toLowerCase().includes(q) ||
         p.sku.toLowerCase().includes(q) ||
         (p.upc ?? "").toLowerCase().includes(q) ||
         p.barcode.toLowerCase().includes(q),
     );
+    if (matches.length > 0) return matches;
+    // Escaneo con el lector en distribución US sobre teclado LatAm/ES
+    // («CSS'001»): si el texto no coincide, se reintenta como código corregido.
+    return productsForCodeQuery(list, query);
   }, [products, query, lowOnly]);
 
   const lowCount = products.filter((p) => getStockStatus(p) === "bajo").length;

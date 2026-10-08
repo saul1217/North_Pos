@@ -1,7 +1,7 @@
 import { Printer, RefreshCw, Search } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
-import { getCategoryLabel } from "@/lib/pos/inventory";
+import { getCategoryLabel, lookupProductByCode, looksLikeScannedCode } from "@/lib/pos/inventory";
 import { SKU_LONG_WARNING, barcodeLabelQuality, type BarcodeLabelData } from "@/lib/pos/barcodeLabel";
 import { barcodeLabelsPreviewHtml, printBarcodeLabels, unprintableLabels, unprintableLabelsMessage } from "@/lib/pos/printBarcodeLabels";
 import { isCode128Encodable } from "@/lib/pos/code128";
@@ -70,10 +70,18 @@ export default function PosCodigosBarrasPage() {
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return entries;
-    return entries.filter((entry) => [entry.name, entry.variantLabel, entry.sku, entry.upc, getCategoryLabel(entry.category)]
+    const matches = entries.filter((entry) => [entry.name, entry.variantLabel, entry.sku, entry.upc, getCategoryLabel(entry.category)]
       .filter(Boolean)
       .some((value) => value!.toLowerCase().includes(q)));
-  }, [entries, query]);
+    if (matches.length > 0 || !looksLikeScannedCode(query)) return matches;
+    // Escaneo con el lector en distribución US sobre teclado LatAm/ES
+    // («CSS'001»): si el texto no coincide, se reintenta como código corregido.
+    const lookup = lookupProductByCode(products, query);
+    const found = lookup.status === "found" ? [lookup] : lookup.status === "ambiguous" ? lookup.matches : [];
+    const keys = new Set(found.map((match) => match.variant ? `${match.product.id}:${match.variant.id}` : match.product.id));
+    const productIds = new Set(found.filter((match) => !match.variant).map((match) => match.product.id));
+    return entries.filter((entry) => keys.has(entry.key) || productIds.has(entry.productId));
+  }, [entries, products, query]);
   const selectedCount = Object.values(copies).reduce((sum, count) => sum + count, 0);
   const selectedEntries = entries.flatMap((entry) => Array.from({ length: copies[entry.key] ?? 0 }, () => entry));
   const previewHtml = useMemo(() => {
