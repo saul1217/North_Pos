@@ -4,7 +4,7 @@ import { FileText, Plus, Printer, Search } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { usePos } from "@/context/PosContext";
-import { formatPosPrice, makeLineId } from "@/lib/pos/inventory";
+import { formatPosPrice, makeLineId, productsForCodeQuery } from "@/lib/pos/inventory";
 import type { PosProduct, Quotation, SaleLineItem } from "@/lib/pos/types";
 import Image from "next/image";
 import { logoSrc } from "@/lib/brand";
@@ -83,11 +83,15 @@ export default function PosCotizacionesPage() {
 
   const availableProducts = useMemo(() => {
     const q = productQuery.trim().toLowerCase();
-    return products.filter((p) => {
-      if (p.status !== "activo") return false;
-      if (!q) return true;
-      return [p.name, p.sku, p.upc, p.barcode].some((value) => value?.toLowerCase().includes(q));
-    });
+    const active = products.filter((p) => p.status === "activo");
+    if (!q) return active;
+    const matches = active.filter((p) =>
+      [p.name, p.sku, p.upc, p.barcode].some((value) => value?.toLowerCase().includes(q)),
+    );
+    if (matches.length > 0) return matches;
+    // Escaneo con el lector en distribución US sobre teclado LatAm/ES
+    // («CSS'001»): si el texto no coincide, se reintenta como código corregido.
+    return productsForCodeQuery(active, productQuery);
   }, [products, productQuery]);
 
   function toggleProduct(p: PosProduct) {
